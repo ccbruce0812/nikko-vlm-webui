@@ -1,0 +1,40 @@
+# Cosmos-Reason2 + Router + Live-VLM-WebUI
+services:
+  router:
+    build: ../router
+    container_name: router
+    ports: ["8080:8080"]
+    networks: [vlm-net]
+    restart: unless-stopped
+
+  cosmos-reason2:
+    build: .
+    image: cosmos-reason2
+    container_name: cosmos-reason2
+    runtime: nvidia
+    volumes:
+      - /home/brucehsu/project/models/cosmos-reason2:/model:ro
+    networks: [vlm-net]
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  live-vlm-webui:
+    build: ../live-vlm-webui
+    container_name: live-vlm-webui
+    network_mode: host
+    privileged: true
+    runtime: nvidia
+    volumes:
+      - /sys:/sys:ro
+      - /run/jtop.sock:/run/jtop.sock:ro
+    restart: unless-stopped
+
+networks:
+  vlm-net:
+    driver: bridge
