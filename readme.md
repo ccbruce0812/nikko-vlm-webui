@@ -142,7 +142,9 @@ sudo visudo -c
 
 這種方式較容易管理且避免直接修改 `/etc/sudoers`。
 
-### 3. 關閉圖形化登入並確保 WiFi 與自動登入
+此步驟以後，可使用 SSH 連入系統進行操作。不問密碼，不需 sudo。
+
+### 3. 關閉圖形化登入
 
 Jetson Orin Nano 預設開機進入圖形化桌面（graphical.target），會佔用 ~500MB RAM。
 本平台全部透過 WebUI 操作，不需要本地桌面，切換為純文字模式可釋放記憶體給容器使用。
