@@ -1,7 +1,7 @@
 #!/bin/bash
 # Download YOLOv8n and export to TensorRT engine
 set -e
-DEST=/home/brucehsu/project/models/yolo
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"; DEST="$SCRIPT_DIR/../models/yolo"
 mkdir -p "$DEST"
 
 # Download PyTorch model

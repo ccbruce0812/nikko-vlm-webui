@@ -1,19 +1,18 @@
 # moondream2 + Router + Live-VLM-WebUI
 services:
   router:
-    build: ../router
+    image: router
     container_name: router
     ports: ["8080:8080"]
     networks: [vlm-net]
     restart: unless-stopped
 
   moondream2:
-    build: .
     image: moondream2
     container_name: moondream2
     runtime: nvidia
     volumes:
-      - /home/brucehsu/project/models/moondream2:/model:ro
+      - ../models/moondream2:/model:ro
     networks: [vlm-net]
     restart: unless-stopped
     deploy:
@@ -25,7 +24,7 @@ services:
               capabilities: [gpu]
 
   live-vlm-webui:
-    build: ../live-vlm-webui
+    image: live-vlm-webui
     container_name: live-vlm-webui
     network_mode: host
     privileged: true

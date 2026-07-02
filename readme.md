@@ -1,4 +1,4 @@
-# Cosmos-Reason2 + moondream2 + YOLO GGUF 容器化推論平台
+# Reason2 + moondream2 + YOLO GGUF 容器化推論平台
 
 ## 平台概述
 
@@ -12,7 +12,7 @@ flowchart LR
     WebUI["live-vlm-webui<br/>:8090"]
     Router["Router<br/>:8080"]
     Moon["moondream2 GGUF<br/>:8001"]
-    Cosmos["Cosmos-Reason2 GGUF<br/>:8002"]
+    Cosmos["Reason2 GGUF<br/>:8002"]
     YOLO["YOLO TensorRT<br/>:8003"]
 
     Browser --> WebUI --> Router
@@ -87,7 +87,15 @@ sudo reboot
 ### 2. 系統配置
 
 Jetson Orin Nano 的 GPU 使用 CMA（Contiguous Memory Allocator）從系統 RAM 動態分配。
-以下步驟依序：MAXN 模式 → 鎖最高時脈 → 調整 NVMap/kernel 參數 → 清除碎片，
+
+**CSI 攝影機**：CAM0 接 IMX219，透過 `jetson-io.py` 設定 device tree overlay。
+設定後 `/dev/video0` 出現，供 rtsp-server 容器使用 nvarguscamerasrc 擷取即時影像。
+
+**Super Mode 說明**：標準 MAXN 僅 15W；刷入 JetPack 6.1+ SD 卡映像後，刪除
+`/etc/nvpmodel.conf` 並 reboot，系統會重新產生含 **25W MAXN** 的設定檔，
+此即 NVIDIA 官方所稱的「Super Mode」（1.7x AI 效能提升）。
+
+以下步驟依序：CSI 攝影機設定 → 檢查/啟用 Super Mode → MAXN (25W) → 鎖最高時脈 → 調整 NVMap/kernel 參數 → 清除碎片，
 目標是**最大化 GPU 可用的連續記憶體**。
 
 ```bash
@@ -95,13 +103,32 @@ Jetson Orin Nano 的 GPU 使用 CMA（Contiguous Memory Allocator）從系統 RA
 echo "=== 目前 nvpmodel 模式 ==="
 sudo nvpmodel -q
 echo ""
+echo "=== CSI 攝影機狀態 ==="
+ls -la /dev/video* 2>/dev/null || echo "  未偵測到 /dev/video*"
+echo ""
 echo "=== 目前 CMA / GPU 可用記憶體 ==="
 cat /proc/meminfo | grep -E "^Cma|^MemAvailable"
 free -h
 
-# 設定 MAXN 效能模式
-sudo nvpmodel -m 0
-echo "→ MAXN mode 0"
+# 設定 CSI 攝影機（CAM0 / IMX219）
+# 若 /dev/video0 不存在，需用 jetson-io.py 設定 device tree overlay
+if [ ! -e /dev/video0 ]; then
+  echo "⚠ /dev/video0 不存在"
+  echo "→ sudo /opt/nvidia/jetson-io/jetson-io.py"
+  echo "  選擇 Configure for compatible camera → IMX219 → Save and reboot"
+fi
+
+# 檢查是否已啟用 Super Mode (25W)
+# 若 nvpmodel -q 未顯示 25W 或 MAXN Super，需先刪除舊 nvpmodel.conf 並 reboot
+sudo nvpmodel -q | grep -q "25W\|MAXN Super" || {
+  echo "⚠ 目前僅支援標準 15W MAXN"
+  echo "→ sudo rm -rf /etc/nvpmodel.conf && sudo reboot  # 刪除後重開機"
+  echo "  (需先刷入 JetPack 6.1+ SD 卡映像，reboot 後系統自動產生 25W nvpmodel.conf)"
+}
+
+# 設定 MAXN Super Mode (25W)
+sudo nvpmodel -m 2
+echo "→ MAXN mode 2 (Super Mode 25W)"
 
 # 鎖定最高時脈（CPU + GPU + EMC）
 sudo jetson_clocks
@@ -115,7 +142,8 @@ sudo sysctl -w vm.vfs_cache_pressure=200
 # 提高 vm.min_free_kbytes：保留更多連續 free page 供 CMA 分配
 sudo sysctl -w vm.min_free_kbytes=65536
 # 設定 NVMap external pool size：限制 GPU 用戶態記憶體池，防止耗盡 CMA
-sudo sh -c 'echo 1024 > /sys/kernel/debug/tegra_nvmap/ext_pool_size'
+# （Orin Nano 無 ext_pool_size，此指令會失敗，可忽略）
+sudo sh -c 'echo 1024 > /sys/kernel/debug/tegra_nvmap/ext_pool_size' 2>/dev/null || true
 
 # 清除記憶體碎片（最大化 CMA 連續區塊）
 sudo sync
@@ -140,28 +168,29 @@ echo "nvpmodel 模式: $(sudo nvpmodel -q | grep 'NV Power Mode')"
 # 確認 nvidia-container-runtime
 sudo docker info | grep Runtime
 
-# 安裝 huggingface_hub（模型下載用）
-pip install huggingface_hub
-
-# 安裝 jetson-containers（含 autotag 工具）
-cd ~
-git clone --depth 1 https://github.com/dusty-nv/jetson-containers.git
-cd jetson-containers
-sudo bash install.sh    # 安裝 autotag、jetson-containers CLI
-
-# 確認 autotag 可用
-autotag llama_cpp --quiet
+# 安裝 python3-venv（模型下載腳本需要）
+sudo apt-get install -y python3-venv
 ```
 
 > 📄 參考腳本：`scripts/03-install-deps.sh`（可直接 `bash scripts/03-install-deps.sh` 執行）
 
 ## 模型下載
 
-### 1. Cosmos-Reason2 (IQ4_XS 量化)
+使用 `scripts/04-download-models.sh` 一鍵下載，或手動依以下步驟操作：
+
+### 1. 建立 venv 並安裝依賴
 
 ```bash
-mkdir -p ~/project/models/cosmos-reason2
-cd ~/project/models/cosmos-reason2
+python3 -m venv /tmp/model-dl-venv
+source /tmp/model-dl-venv/bin/activate
+pip install huggingface_hub ultralytics onnx
+```
+
+### 2. Reason2 (IQ4_XS 量化)
+
+```bash
+mkdir -p models/reason2
+cd models/reason2
 
 # LLM (IQ4_XS, ~970MB)
 hf download mradermacher/Cosmos-Reason2-2B-heretic-GGUF \
@@ -170,25 +199,29 @@ hf download mradermacher/Cosmos-Reason2-2B-heretic-GGUF \
 # mmproj (F16, ~782MB)
 hf download apolo13x/Cosmos-Reason2-2B-GGUF \
     mmproj-Cosmos-Reason2-2B-F16.gguf --local-dir .
+
+cd ../..
 ```
 
-### 2. moondream2 (q4_k 量化)
+### 3. moondream2 (q4_k 量化)
 
 ```bash
-mkdir -p ~/project/models/moondream2
-cd ~/project/models/moondream2
+mkdir -p models/moondream2
+cd models/moondream2
 
 hf download salivosa/moondream2-gguf \
     moondream2-q4_k.gguf moondream2-mmproj-f16.gguf --local-dir .
+
+cd ../..
 ```
 
-### 3. YOLO (TensorRT)
+### 4. YOLO (TensorRT)
 
-YOLOv8n 模型下載後需在 Jetson 上匯出 TensorRT engine（需 GPU）。
+需 Jetson GPU，匯出時使用 `quantize=16`（FP16）。
 
 ```bash
-mkdir -p ~/project/models/yolo
-cd ~/project/models/yolo
+mkdir -p models/yolo
+cd models/yolo
 
 # 下載 YOLOv8n PyTorch 模型（~6.5MB）
 python3 -c "
@@ -199,116 +232,147 @@ shutil.move('yolov8n.pt', '.')
 print('Downloaded yolov8n.pt')
 "
 
-# 匯出 TensorRT engine（FP16，需 Jetson GPU，~13MB）
+# 匯出 TensorRT engine（FP16，~13MB）
 python3 -c "
 from ultralytics import YOLO
 model = YOLO('yolov8n.pt')
-model.export(format='engine', device=0, half=True, imgsz=640)
+model.export(format='engine', device=0, quantize=16, imgsz=640)
 import shutil
 shutil.move('yolov8n.engine', '.')
 print('TensorRT engine exported')
 "
+
+cd ../..
+```
+
+### 5. 清理 venv
+
+```bash
+deactivate
+rm -rf /tmp/model-dl-venv
 ```
 
 > 📄 參考腳本：`scripts/04-download-models.sh`（可直接 `bash scripts/04-download-models.sh` 執行）
 
 ## 建置容器
 
-每個模型有獨立目錄，內含 Dockerfile、docker-compose.yml、下載腳本。
+### 1. 建置說明
+
+模型類容器內含 Dockerfile、docker-compose.yml、下載腳本。但功能類的容器就只有Dockerfile。
 
 ```bash
 # 進入專案目錄
-cd ~/project
+# 在 nikko-vlm-webui 根目錄執行
 
-# 拉取基礎映像（llama.cpp，後續 docker build 會以此為基底）
-sudo docker pull $(autotag llama_cpp --quiet)
+# 拉取基礎映像（L4T PyTorch）
+sudo docker pull dustynv/l4t-pytorch:r36.4.0
 
 # Router（API 閘道，動態模型偵測，~168MB）
 sudo docker build -t router router/
 
 # WebUI（官方 live-vlm-webui + GPU fix + API 預設，~1.5GB）
-sudo docker build -t live-vlm-webui-jetson live-vlm-webui/
+sudo docker build -t live-vlm-webui live-vlm-webui/
 
-# Cosmos-Reason2（llama.cpp 原始碼編譯 + CUDA + FlashAttention，首次 ~27 分鐘，~7GB）
-sudo docker build -t cosmos-reason2 cosmos-reason2/
+# Reason2（llama-server pre-built binaries，~2GB）
+sudo docker build -t reason2 -f reason2/Dockerfile .
 
-# moondream2（llama.cpp + phi2 chat template，重用 cosmos 編譯快取，~7GB）
-sudo docker build -t moondream2 moondream2/
+# moondream2（llama-server pre-built binaries，~2GB）
+sudo docker build -t moondream2 -f moondream2/Dockerfile .
 
 # YOLO（PyTorch + ultralytics + TensorRT，~13GB）
 sudo docker build -t yolo yolo/
 
-# Player（GStreamer RTSP 串流，選用，~630MB）
-sudo docker build -t player player/
+# RTSP Server（CSI 攝影機串流，選用，~2GB）
+sudo docker build -t rtsp-server rtsp-server/
 ```
 
 > 📄 參考腳本：`scripts/05-build-all.sh`（可直接 `bash scripts/05-build-all.sh` 執行）
 
-### Image ↔ Container 對照表
+### 2. Image ↔ Container 對照表
 
 | Image | Container | Port | 用途 |
 |-------|-----------|------|------|
 | `router` | `router` | 8080 | API 閘道，動態模型偵測 |
-| `cosmos-reason2` | `cosmos-reason2` | 8002 | Cosmos-Reason2 GGUF 推論 |
 | `moondream2` | `moondream2` | 8001 | moondream2 GGUF 推論 |
+| `reason2` | `reason2` | 8002 | Reason2 GGUF 推論 |
 | `yolo` | `yolo` | 8003 | YOLO TensorRT 物體偵測 |
-| `live-vlm-webui-jetson` | `live-vlm-webui` | 8090 | Web 前端，WebRTC 鏡頭 |
-| `player` | `player` | 8554 | RTSP 串流伺服器 |
+| `live-vlm-webui` | `live-vlm-webui` | 8090 | Web 前端，WebRTC 鏡頭 |
+| `rtsp-server` | `rtsp-server` | 8554 | CSI 攝影機 RTSP 串流（IMX219 / CAM0） |
 
 ## 啟動服務
 
-### docker-compose
+### 1. docker-compose
 
-三種組合，各自從對應目錄啟動：
+三種組合，各自從對應目錄啟動/停止：
 
 ```bash
-cd ~/project
+# 在 nikko-vlm-webui 根目錄執行
 
-# Cosmos 組合
-(cd cosmos-reason2 && sudo docker compose up -d)
+# Reason2 組合
+(cd reason2 && sudo docker compose up -d)      # 啟動
+(cd reason2 && sudo docker compose down)       # 停止
 
 # 或 moondream2 組合
-(cd moondream2 && sudo docker compose up -d)
+(cd moondream2 && sudo docker compose up -d)   # 啟動
+(cd moondream2 && sudo docker compose down)    # 停止
 
 # 或 YOLO 組合
-(cd yolo && sudo docker compose up -d)
+(cd yolo && sudo docker compose up -d)         # 啟動
+(cd yolo && sudo docker compose down)          # 停止
 ```
 
-> 📄 參考腳本：`scripts/06-start-cosmos.sh` / `07-start-moondream2.sh` / `08-start-yolo.sh`（可直接 `bash scripts/06-start-cosmos.sh` 執行）
+> 📄 啟動：`scripts/06-start-reason2.sh` / `08-start-moondream2.sh` / `10-start-yolo.sh`
+> 📄 停止：`scripts/07-stop-reason2.sh` / `09-stop-moondream2.sh` / `11-stop-yolo.sh`
 
-### 手動 docker run（推薦）
+### 2. 手動 docker run（推薦 — 互動式腳本）
 
-若需個別控制，也可逐一手動啟動：
+三個模型**不可同時啟動**（共用 CMA 記憶體，Orin Nano 僅 7.4GB RAM）。
+腳本會讓使用者任選一個模型，並可選用 RTSP Server。
+
+```bash
+bash scripts/12-start-manual.sh
+```
+
+腳本流程：
+1. 自動啟動 Router + WebUI（必要基礎設施）
+2. 互動選擇模型（Cosmos / moondream2 / YOLO 三選一）
+3. 詢問是否啟動 RTSP Server（CSI 攝影機串流，選用）
+
+若需個別手動控制，參考以下指令：
 
 ```bash
 # 建立共用網路（只需執行一次）
 sudo docker network create vlm-net
 
-# Router
+# Router（必要）
 sudo docker run -d --name router --network vlm-net -p 8080:8080 router
 
-# Cosmos（需先啟動，確保 CMA 足夠）
-sudo docker run -d --name cosmos-reason2 --runtime nvidia --network vlm-net \
-    -v /home/brucehsu/project/models/cosmos-reason2:/model:ro cosmos-reason2
+# 選擇一個模型（不可同時啟動多個）：
+# Cosmos（~2.6GB GPU）
+sudo docker run -d --name reason2 --runtime nvidia --network vlm-net \
+    -v "$(pwd)/models/reason2:/model:ro" reason2
 
-# moondream2
+# moondream2（~2.6GB GPU）
 sudo docker run -d --name moondream2 --runtime nvidia --network vlm-net \
-    -v /home/brucehsu/project/models/moondream2:/model:ro moondream2
+    -v "$(pwd)/models/moondream2:/model:ro" moondream2
 
-# YOLO
+# YOLO（~1.5GB GPU）
 sudo docker run -d --name yolo --runtime nvidia --network vlm-net \
-    -v /home/brucehsu/project/models/yolo:/model:ro yolo
+    -v "$(pwd)/models/yolo:/model:ro" yolo
 
-# WebUI（host 網路，已預設指向 router）
+# WebUI（必要，host 網路）
 sudo docker run -d --name live-vlm-webui --network host --runtime nvidia --privileged \
-    -v /sys:/sys:ro -v /run/jtop.sock:/run/jtop.sock:ro live-vlm-webui-jetson
+    -v /sys:/sys:ro -v /run/jtop.sock:/run/jtop.sock:ro live-vlm-webui
 
-# Player（RTSP 串流）
-sudo docker run -d --name player -p 8554:8554 \
-    -v /home/brucehsu/project/videos:/videos:ro -e VIDEO_FILE=/videos/demo.mp4 player
+# RTSP Server（選用，CSI 攝影機串流）
+sudo docker run -d --name rtsp-server --runtime nvidia --network host \
+    --device=/dev/video0 --device=/dev/media0 \
+    -v /tmp:/tmp \
+    -e WIDTH=1280 -e HEIGHT=720 -e FPS=30 rtsp-server
 ```
 
-> 📄 參考腳本：`scripts/09-start-manual.sh`（可直接 `bash scripts/09-start-manual.sh` 執行）
+> 📄 參考腳本：`scripts/12-start-manual.sh`（可直接 `bash scripts/12-start-manual.sh` 執行）
+> 📄 停止全部：`scripts/13-stop-manual.sh`
 
 ## 手動測試
 
@@ -326,13 +390,13 @@ with open('test.jpg', 'rb') as f:
 B64=$(cat /tmp/test_b64.txt)
 ```
 
-### 2. Cosmos-Reason2（影像描述）
+### 2. Reason2（影像描述）
 
 ```bash
 curl -s http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d "{
-    \"model\": \"cosmos-reason2-2b\",
+    \"model\": \"reason2\",
     \"messages\": [{\"role\":\"user\",\"content\":[
       {\"type\":\"text\",\"text\":\"Describe this image in one sentence.\"},
       {\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/jpeg;base64,$B64\"}}
@@ -377,21 +441,36 @@ curl -s http://localhost:8080/v1/chat/completions \
 curl -s http://localhost:8080/v1/models | python3 -m json.tool
 ```
 
-### 6. 快速驗證（不需要真實圖片）
+### 6. 快速驗證（使用 test/test_bus.jpg）
+
+先查 Router 的 `/v1/models` 確認哪些模型正在運行，只測試實際存在的模型，未運行的自動跳過。
 
 ```bash
-# 產生單色測試圖並一次測三個模型
+# 查詢可用模型 → 只測運行的
 python3 -c "
-import base64, json, urllib.request
-from PIL import Image
-import io
+import base64, json, urllib.request, sys
 
-for color, model in [('blue','cosmos-reason2-2b'),('red','moondream2'),('white','yolo')]:
-    img = Image.new('RGB', (640,480), color=color)
-    buf = io.BytesIO(); img.save(buf, format='JPEG')
-    b64 = base64.b64encode(buf.getvalue()).decode()
-    
-    prompt = 'Describe this image.' if model != 'yolo' else 'Detect objects'
+# 1. 查詢目前有哪些模型在運行
+req = urllib.request.Request('http://localhost:8080/v1/models')
+resp = json.loads(urllib.request.urlopen(req, timeout=10).read())
+running = [m['id'] for m in resp.get('data', [])]
+print(f'Router 回報模型: {running}')
+
+if not running:
+    print('⚠ 沒有任何模型在運行')
+    sys.exit(0)
+
+# 2. 讀取測試圖片
+with open('test/test_bus.jpg', 'rb') as f:
+    b64 = base64.b64encode(f.read()).decode()
+
+# 3. 只測試 Router 回報的模型（照固定順序）
+for model in ['reason2', 'moondream2', 'yolo']:
+    if model not in running:
+        print(f'⊘ {model}: 未運行，跳過')
+        continue
+
+    prompt = 'Describe this image in one sentence.' if model != 'yolo' else 'Detect objects'
     data = json.dumps({
         'model': model,
         'messages': [{'role':'user','content':[
@@ -400,27 +479,26 @@ for color, model in [('blue','cosmos-reason2-2b'),('red','moondream2'),('white',
         ]}],
         'max_tokens': 100
     }).encode()
-    
+
     req = urllib.request.Request('http://localhost:8080/v1/chat/completions',
         data=data, headers={'Content-Type':'application/json'})
-    resp = json.loads(urllib.request.urlopen(req, timeout=60).read())
+    resp = json.loads(urllib.request.urlopen(req, timeout=120).read())
     text = resp['choices'][0]['message']['content']
-    print(f'{model} ({color}): {text[:80]}')
+    print(f'✓ {model}: {text[:100]}')
 "
 ```
 
-> 📄 參考腳本：`scripts/10-test-quick.sh`（可直接 `bash scripts/10-test-quick.sh` 執行）
+> 📄 參考腳本：`scripts/16-test-quick.sh`（可直接 `bash scripts/16-test-quick.sh` 執行）
 
 ## 效能數據
 
-| 指標 | Cosmos-Reason2 IQ4_XS | moondream2 q4_k | YOLO |
+| 指標 | Reason2 IQ4_XS | moondream2 q4_k | YOLO |
 |------|--------------------------|-----------------|---------|
 | 模型大小 | LLM 970MB + mmproj 782MB | LLM 877MB + mmproj 868MB | 6.5MB |
-| 容器大小 | 7.08GB | 7.08GB | 13.3GB |
-| GPU 記憶體 | ~2.6GB | ~2.6GB | ~1.5GB |
+| 容器大小 | ~2GB (pre-built wheel) | ~2GB (pre-built wheel) | 13.3GB |
+| 建置時間 | ~2 分鐘 (pip install) | ~2 分鐘 (pip install) | ~85 秒 |
 | Prompt 速度 | 72.9 tok/s | 299 tok/s | — |
 | Generation 速度 | 19.5 tok/s | 22.7 tok/s | — |
-| 編譯時間 | ~27 分鐘 (首次) | 快取 (<1秒) | ~85 秒 |
 | Chat Template | qwen3vl (原生) | moondream2 自訂 Jinja | — |
 | 用途 | VLM 描述 | VLM 描述 | 物體偵測 |
 
@@ -428,26 +506,49 @@ for color, model in [('blue','cosmos-reason2-2b'),('red','moondream2'),('white',
 
 | 狀態 | RAM 可用 | GPU 可用 |
 |------|---------|---------|
-| Super mode 後 (空閒) | 5.4 GiB | 5.4 GiB |
+| Super Mode (25W) 後 (空閒) | 5.4 GiB | 5.4 GiB |
 | Cosmos 載入後 | ~3.0 GiB | ~2.8 GiB |
 | Cosmos + moondream2 同時 | ~1.5 GiB | ~0.5 GiB |
 
 ## 疑難排解
 
-### 1. cosmos 啟動失敗：CUDA out of memory
+### 1. reason2 啟動失敗：CUDA out of memory
 
-- **何時發生**：手動同時啟動 cosmos 與 yolo（或 moondream2），不在 docker-compose 情境
-- **原因**：兩個模型同時搶 GPU CMA 記憶體，cosmos 的 mmproj 需要 ~1.1GB
-- **解法**：先停其他模型，啟動 cosmos，再恢復
+- **何時發生**：手動同時啟動 reason2 與 yolo（或 moondream2），不在 docker-compose 情境
+- **原因**：兩個模型同時搶 GPU CMA 記憶體，reason2 的 mmproj 需要 ~1.1GB
+- **解法**：先停其他模型，啟動 reason2，再恢復
 
 ```bash
 sudo docker stop yolo
-sudo docker start cosmos-reason2
+sudo docker start reason2
 sleep 35
 sudo docker start yolo
 ```
 
-> 📄 參考腳本：`scripts/11-troubleshoot-cosmos-oom.sh`（可直接 `bash scripts/11-troubleshoot-cosmos-oom.sh` 執行）
+> 📄 參考腳本：`scripts/17-troubleshoot-reason2-oom.sh`（可直接 `bash scripts/17-troubleshoot-reason2-oom.sh` 執行）
+
+### 1.1 微調模型參數（OOM 或效能調校）
+
+所有模型參數已在 Dockerfile 以 Jetson Orin Nano 最佳化預設值寫入，正常不需修改。
+若仍需覆寫，透過 `-e` 傳入環境變數：
+
+```bash
+# 範例：降低 reason2 GPU 層數以釋放記憶體
+sudo docker run -d --name reason2 --runtime nvidia \
+    -v "$(pwd)/models/reason2:/model:ro" \
+    -e N_GPU_LAYERS=8 reason2
+
+# 範例：提高 moondream2 ctx size 處理較長對話
+sudo docker run -d --name moondream2 --runtime nvidia \
+    -v "$(pwd)/models/moondream2:/model:ro" \
+    -e CTX_SIZE=2048 moondream2
+```
+
+| 容器 | 可調參數（環境變數） | 預設值 |
+|------|---------------------|--------|
+| reason2 | `N_GPU_LAYERS` `N_THREADS` `N_BATCH` `CTX_SIZE` `FLASH_ATTN` | 12 / 4 / 256 / 2048 / on |
+| moondream2 | `N_GPU_LAYERS` `N_THREADS` `N_BATCH` `CTX_SIZE` `FLASH_ATTN` | 15 / 4 / 128 / 1024 / off |
+| yolo | （無 llama-server 參數） | — |
 
 ### 2. llama-server: libllama-server-impl.so not found
 
@@ -493,23 +594,23 @@ sudo docker start yolo
 sudo docker system prune -af
 ```
 
-> 📄 參考腳本：`scripts/12-cleanup-disk.sh`（可直接 `bash scripts/12-cleanup-disk.sh` 執行）
+> 📄 參考腳本：`scripts/18-cleanup-disk.sh`（可直接 `bash scripts/18-cleanup-disk.sh` 執行）
 
 ## 檔案結構
 
 ### 近端 / 遠端（開發機 / Jetson，結構對稱）
 
 ```
-~/project/
+./
 ├── router/
 │   ├── Dockerfile
 │   └── router.py                 # 動態模型偵測
-├── cosmos-reason2/
-│   ├── Dockerfile                # llama.cpp 原始碼編譯 + CUDA + FlashAttention
-│   ├── docker-compose.yml        # cosmos + router + webui
+├── reason2/
+│   ├── Dockerfile                # llama-cpp-python wheel + Python server
+│   ├── docker-compose.yml        # reason2 + router + webui
 │   └── download_model.sh         # IQ4_XS LLM + F16 mmproj
 ├── moondream2/
-│   ├── Dockerfile                # llama.cpp + phi2 chat template
+│   ├── Dockerfile                # llama-cpp-python wheel + Python server
 │   ├── docker-compose.yml        # moondream2 + router + webui
 │   └── download_model.sh         # q4_k LLM + f16 mmproj
 ├── yolo/
@@ -520,27 +621,33 @@ sudo docker system prune -af
 ├── live-vlm-webui/
 │   ├── Dockerfile                # 官方 live-vlm-webui + GPU fix + API 預設
 │   └── patch_gpu_monitor.py      # Jetson GPU 監測修復
-├── player/
-│   ├── Dockerfile                # GStreamer RTSP server
-│   └── gst_rtsp_server.py
+├── rtsp-server/
+│   ├── Dockerfile                # GStreamer CSI RTSP server
+│   └── gst_rtsp_server.py        # nvarguscamerasrc → nvvidconv → x264enc → RTSP
 ├── models/
-│   ├── cosmos-reason2/
+│   ├── reason2/
 │   ├── moondream2/
 │   └── yolo/
-├── videos/
+├── test/
 ├── scripts/
-│   ├── 01-disable-gui.sh              # 關閉圖形化登入 + WiFi + 自動登入
-│   ├── 02-system-config.sh            # 系統配置（Super Mode + NVMap + 記憶體優化）
-│   ├── 03-install-deps.sh             # 安裝基本套件（Docker + jetson-containers + huggingface_hub）
-│   ├── 04-download-models.sh          # 下載所有模型（Cosmos + moondream2 + YOLO）
-│   ├── 05-build-all.sh                # 建置全部容器（含拉取基礎映像）
-│   ├── 06-start-cosmos.sh             # 啟動 Cosmos 組合
-│   ├── 07-start-moondream2.sh         # 啟動 moondream2 組合
-│   ├── 08-start-yolo.sh               # 啟動 YOLO 組合
-│   ├── 09-start-manual.sh             # 手動 docker run 全部容器
-│   ├── 10-test-quick.sh               # 快速驗證三個模型
-│   ├── 11-troubleshoot-cosmos-oom.sh  # Cosmos OOM 修復
-│   └── 12-cleanup-disk.sh             # Docker 磁碟清理
+│   ├── 01-disable-gui.sh               # 關閉圖形化登入 + WiFi + 自動登入
+│   ├── 02-system-config.sh             # 系統配置（CSI 攝影機 + Super Mode 25W + NVMap + 記憶體優化）
+│   ├── 03-install-deps.sh              # 安裝基本套件（Docker + jetson-containers + huggingface_hub）
+│   ├── 04-download-models.sh           # 下載所有模型（Cosmos + moondream2 + YOLO）
+│   ├── 05-build-all.sh                 # 建置全部容器（含拉取基礎映像）
+│   ├── 06-start-reason2.sh             # 啟動 Reason2 組合
+│   ├── 07-stop-reason2.sh              # 停止 Reason2
+│   ├── 08-start-moondream2.sh          # 啟動 moondream2 組合
+│   ├── 09-stop-moondream2.sh           # 停止 moondream2
+│   ├── 10-start-yolo.sh                # 啟動 YOLO 組合
+│   ├── 11-stop-yolo.sh                 # 停止 YOLO
+│   ├── 12-start-manual.sh              # 手動 docker run（互動式）
+│   ├── 13-stop-manual.sh               # 停止所有手動啟動的容器
+│   ├── 14-start-rtsp-server.sh         # 啟動 RTSP Server（CSI 攝影機串流，選用）
+│   ├── 15-stop-rtsp-server.sh          # 停止 RTSP Server
+│   ├── 16-test-quick.sh                # 快速驗證三個模型
+│   ├── 17-troubleshoot-reason2-oom.sh  # Reason2 OOM 修復
+│   └── 18-cleanup-disk.sh              # Docker 磁碟清理
 ├── readme.md
 ├── log.md
 └── porting.md

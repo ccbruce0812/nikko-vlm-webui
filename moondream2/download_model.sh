@@ -1,7 +1,7 @@
 #!/bin/bash
 # Download moondream2 GGUF models (q4_k LLM + f16 mmproj)
 set -e
-DEST=/home/brucehsu/project/models/moondream2
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"; DEST="$SCRIPT_DIR/../models/moondream2"
 mkdir -p "$DEST"
 
 echo "=== moondream2 q4_k + mmproj (salivosa) ==="

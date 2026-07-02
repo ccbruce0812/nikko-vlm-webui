@@ -108,7 +108,7 @@ GStreamer 1.20.3
 https://launchpad.net/distros/ubuntu/+source/gstreamer1.0
 
 === Project directory ===
-/home/brucehsu/project:
+/home/brucehsu/nikko-vlm-webui:
 total 32K
 drwxrwxr-x  8 brucehsu brucehsu 4.0K  六  25 00:54 .
 drwxr-x--- 17 brucehsu brucehsu 4.0K  六  25 00:54 ..
@@ -119,51 +119,51 @@ drwxrwxr-x  2 brucehsu brucehsu 4.0K  六  25 00:54 router
 drwxrwxr-x  2 brucehsu brucehsu 4.0K  六  25 00:54 videos
 drwxrwxr-x  2 brucehsu brucehsu 4.0K  六  25 00:54 webui
 
-/home/brucehsu/project/artifacts:
+/home/brucehsu/nikko-vlm-webui/artifacts:
 total 8.0K
 drwxrwxr-x 2 brucehsu brucehsu 4.0K  六  25 00:54 .
 drwxrwxr-x 8 brucehsu brucehsu 4.0K  六  25 00:54 ..
 
-/home/brucehsu/project/logs:
+/home/brucehsu/nikko-vlm-webui/logs:
 total 12K
 drwxrwxr-x 2 brucehsu brucehsu 4.0K  六  25 00:54 .
 drwxrwxr-x 8 brucehsu brucehsu 4.0K  六  25 00:54 ..
 -rw-rw-r-- 1 brucehsu brucehsu 3.9K  六  25 00:54 00_env_check.txt
 
-/home/brucehsu/project/models:
+/home/brucehsu/nikko-vlm-webui/models:
 total 20K
 drwxrwxr-x 5 brucehsu brucehsu 4.0K  六  25 00:54 .
 drwxrwxr-x 8 brucehsu brucehsu 4.0K  六  25 00:54 ..
-drwxrwxr-x 2 brucehsu brucehsu 4.0K  六  25 00:54 cosmos-reason2
+drwxrwxr-x 2 brucehsu brucehsu 4.0K  六  25 00:54 reason2
 drwxrwxr-x 2 brucehsu brucehsu 4.0K  六  25 00:54 moondream2
 drwxrwxr-x 2 brucehsu brucehsu 4.0K  六  25 00:54 yolo
 
-/home/brucehsu/project/models/cosmos-reason2:
+/home/brucehsu/nikko-vlm-webui/models/reason2:
 total 8.0K
 drwxrwxr-x 2 brucehsu brucehsu 4.0K  六  25 00:54 .
 drwxrwxr-x 5 brucehsu brucehsu 4.0K  六  25 00:54 ..
 
-/home/brucehsu/project/models/moondream2:
+/home/brucehsu/nikko-vlm-webui/models/moondream2:
 total 8.0K
 drwxrwxr-x 2 brucehsu brucehsu 4.0K  六  25 00:54 .
 drwxrwxr-x 5 brucehsu brucehsu 4.0K  六  25 00:54 ..
 
-/home/brucehsu/project/models/yolo:
+/home/brucehsu/nikko-vlm-webui/models/yolo:
 total 8.0K
 drwxrwxr-x 2 brucehsu brucehsu 4.0K  六  25 00:54 .
 drwxrwxr-x 5 brucehsu brucehsu 4.0K  六  25 00:54 ..
 
-/home/brucehsu/project/router:
+/home/brucehsu/nikko-vlm-webui/router:
 total 8.0K
 drwxrwxr-x 2 brucehsu brucehsu 4.0K  六  25 00:54 .
 drwxrwxr-x 8 brucehsu brucehsu 4.0K  六  25 00:54 ..
 
-/home/brucehsu/project/videos:
+/home/brucehsu/nikko-vlm-webui/videos:
 total 8.0K
 drwxrwxr-x 2 brucehsu brucehsu 4.0K  六  25 00:54 .
 drwxrwxr-x 8 brucehsu brucehsu 4.0K  六  25 00:54 ..
 
-/home/brucehsu/project/webui:
+/home/brucehsu/nikko-vlm-webui/webui:
 total 8.0K
 drwxrwxr-x 2 brucehsu brucehsu 4.0K  六  25 00:54 .
 drwxrwxr-x 8 brucehsu brucehsu 4.0K  六  25 00:54 ..
@@ -348,7 +348,7 @@ Router: 168MB | Cosmos: 7.08GB (1603s CUDA+FA compile) | moondream2: 7.08GB (cac
 === Phase 7: First Inference Test ===
 Timestamp: $(date -u)
 
-=== Cosmos-Reason2-2B IQ4_XS ===
+=== Reason2-2B IQ4_XS ===
 Status: SUCCESS
 Prompt: "What color is this image? Answer in one word."
 Image: 224x224 blue JPEG

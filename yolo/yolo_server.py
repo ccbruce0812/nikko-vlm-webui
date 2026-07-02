@@ -6,10 +6,10 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [yolo] %(message)s")
 logger = logging.getLogger("yolo")
 
-# Use TensorRT engine if available, fallback to PyTorch
+# Use PyTorch model; TensorRT engine available at /model/yolov8n.engine (may need re-export)
 ENGINE_PATH = "/model/yolov8n.engine"
 PT_PATH = "/model/yolov8n.pt"
-MODEL_PATH = ENGINE_PATH if os.path.exists(ENGINE_PATH) else PT_PATH
+MODEL_PATH = PT_PATH
 
 model = None
 engine_type = "TensorRT" if MODEL_PATH.endswith(".engine") else "PyTorch"

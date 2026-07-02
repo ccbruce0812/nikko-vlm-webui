@@ -1,19 +1,18 @@
 # YOLOv8n TensorRT + Router + Live-VLM-WebUI
 services:
   router:
-    build: ../router
+    image: router
     container_name: router
     ports: ["8080:8080"]
     networks: [vlm-net]
     restart: unless-stopped
 
   yolo:
-    build: .
     image: yolo
     container_name: yolo
     runtime: nvidia
     volumes:
-      - /home/brucehsu/project/models/yolo:/model:ro
+      - ../models/yolo:/model:ro
     networks: [vlm-net]
     restart: unless-stopped
     deploy:
@@ -25,7 +24,7 @@ services:
               capabilities: [gpu]
 
   live-vlm-webui:
-    build: ../live-vlm-webui
+    image: live-vlm-webui
     container_name: live-vlm-webui
     network_mode: host
     privileged: true

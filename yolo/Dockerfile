@@ -1,10 +1,9 @@
 # YOLO container (object detection)
-# Base: jetson-containers pytorch (CUDA 12.6 + PyTorch 2.7)
-ARG BASE_IMAGE=dustynv/pytorch:2.7-r36.4.0-cu128-24.04
-FROM ${BASE_IMAGE}
+# Base: jetson-containers l4t-pytorch (CUDA 12.6 + PyTorch 2.4)
+FROM dustynv/l4t-pytorch:r36.4.0
 
 # Override pip index to use standard PyPI (jetson-containers index not reachable during build)
-RUN pip install --no-cache-dir -i https://pypi.org/simple/ ultralytics
+RUN pip install --no-cache-dir -i https://pypi.org/simple/ ultralytics "numpy<2"
 
 # OpenCV runtime deps (libxcb for cv2.imshow support)  
 RUN apt-get update && apt-get install -y --no-install-recommends \

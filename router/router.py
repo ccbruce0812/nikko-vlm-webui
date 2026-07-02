@@ -29,8 +29,8 @@ MODEL_REGISTRY = {
         "url": "http://moondream2:8001/v1",
         "owned_by": "jetson",
     },
-    "cosmos-reason2-2b": {
-        "url": "http://cosmos-reason2:8002/v1",
+    "reason2": {
+        "url": "http://reason2:8002/v1",
         "owned_by": "jetson",
     },
     "yolo": {
