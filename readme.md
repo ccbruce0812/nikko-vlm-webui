@@ -35,11 +35,114 @@ Router 會自動探測後端容器狀態，`/v1/models` 只回傳實際運行的
 - CUDA 12.6 (GPU Driver 540.4.0)
 - RAM: 7.4GB
 - 儲存空間: 至少 30GB 可用（Docker 映像 ~20GB + 模型 ~3.5GB）
-- [JetPack 6.2.1 Super SD Card Image](https://developer.nvidia.com/downloads/embedded/L4T/r36_Release_v4.4/jp62-r1-orin-nano-sd-card-image.zip)
 
 ## 前置準備
 
-### 1. 關閉圖形化登入並確保 WiFi 與自動登入
+### 1. 準備 SD 卡
+
+從[JetPack 6.2.1 Super SD Card Image](https://developer.nvidia.com/downloads/embedded/L4T/r36_Release_v4.4/jp62-r1-orin-nano-sd-card-image.zip) 下載 Image 並且燒錄到 SD 卡。
+用[balenaEtcher](https://github.com/balena-io/etcher/releases/download/v2.1.6/balenaEtcher-2.1.6.Setup.exe)燒錄，插入該 SD 卡開機。
+
+### 2. 在Terminal中完成剩餘設定
+
+- 在近端產生 SSH Key 並複製到遠端（免密碼登入）
+
+產生 SSH Key
+
+```bash
+ssh-keygen -t ed25519 -C "your_email@example.com"
+```
+
+一路按 Enter 使用預設路徑即可：
+
+```text
+~/.ssh/id_ed25519
+~/.ssh/id_ed25519.pub
+```
+
+將 Public Key 複製到遠端主機
+
+```bash
+ssh-copy-id user@remote_host
+```
+
+例如：
+
+```bash
+ssh-copy-id john@192.168.1.100
+```
+
+首次會要求輸入遠端使用者密碼。
+
+- 測試免密碼登入
+
+```bash
+ssh user@remote_host
+```
+
+例如：
+
+```bash
+ssh john@192.168.1.100
+```
+
+若沒有 ssh-copy-id
+
+手動複製：
+
+```bash
+cat ~/.ssh/id_ed25519.pub | ssh user@remote_host "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+```
+
+- 在遠端設定 sudoers，讓使用者執行 sudo 不需輸入密碼
+
+編輯 sudoers：
+
+```bash
+sudo visudo
+```
+
+加入：
+
+```text
+username ALL=(ALL) NOPASSWD: ALL
+```
+
+例如：
+
+```text
+john ALL=(ALL) NOPASSWD: ALL
+```
+
+儲存後即可。
+
+測試
+
+```bash
+sudo -k
+sudo ls /root
+```
+
+若不再要求輸入密碼即設定成功。
+
+建議使用 `/etc/sudoers.d/`
+
+建立獨立設定檔：
+
+```bash
+echo 'john ALL=(ALL) NOPASSWD: ALL' | sudo tee /etc/sudoers.d/john
+sudo chmod 440 /etc/sudoers.d/john
+```
+
+驗證：
+
+```bash
+sudo visudo -c
+```
+
+這種方式較容易管理且避免直接修改 `/etc/sudoers`。
+
+### 3. 關閉圖形化登入並確保 WiFi 與自動登入
 
 Jetson Orin Nano 預設開機進入圖形化桌面（graphical.target），會佔用 ~500MB RAM。
 本平台全部透過 WebUI 操作，不需要本地桌面，切換為純文字模式可釋放記憶體給容器使用。
@@ -76,7 +179,7 @@ sudo reboot
 > free -h                           # → available 應比原先多 ~400-500MB
 > ```
 
-### 2. 系統配置
+### 4. 系統配置
 
 Jetson Orin Nano 的 GPU 使用 CMA（Contiguous Memory Allocator）從系統 RAM 動態分配。
 
@@ -153,7 +256,7 @@ echo "nvpmodel 模式: $(sudo nvpmodel -q | grep 'NV Power Mode')"
 
 > 📄 參考腳本：`scripts/02-system-config.sh`（可直接 `bash scripts/02-system-config.sh` 執行）
 
-### 3. 安裝基本套件
+### 5. 安裝基本套件
 
 ```bash
 # Docker 應已預裝（JetPack 6.x）
