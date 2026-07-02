@@ -1,7 +1,7 @@
 # live-vlm-webui with Jetson GPU fix + pre-configured for local router
 FROM ghcr.io/nvidia-ai-iot/live-vlm-webui:latest-jetson-orin
 
-# Patch gpu_monitor.py for Jetson (VRAM=0 is normal, use sysfs fallback)
+# Patch gpu_monitor.py for Jetson (skip nvidia-smi fallback)
 COPY patch_gpu_monitor.py /tmp/patch_gpu_monitor.py
 RUN python3 /tmp/patch_gpu_monitor.py && rm /tmp/patch_gpu_monitor.py
 

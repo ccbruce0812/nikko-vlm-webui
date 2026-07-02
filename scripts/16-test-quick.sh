@@ -1,48 +1,41 @@
 #!/usr/bin/env bash
 # ============================================================
-# 快速驗證：用 test/test_bus.jpg 測試所有運行中的模型
-# 對應 README.md → 手動測試 → 快速驗證
-# 前提：Router 已啟動在 localhost:8080
+# Quick validation: test running models with test/test_bus.jpg
+# Reference: README.md → Manual Testing → 6. Quick Validation
 # ============================================================
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-TEST_IMG="$PROJECT_DIR/test/test_bus.jpg"
-
-if [ ! -f "$TEST_IMG" ]; then
-    echo "❌ 找不到測試圖：$TEST_IMG"
-    exit 1
-fi
-
-echo "=== 快速驗證模型 ==="
-
+echo "=== Detecting running models ==="
 python3 -c "
-import base64, json, urllib.request, sys
+import base64, json, urllib.request, sys, os
 
-# 1. 查詢目前有哪些模型在運行
+# 1. Query which models are running
+req = urllib.request.Request('http://localhost:8080/v1/models')
 try:
-    req = urllib.request.Request('http://localhost:8080/v1/models')
     resp = json.loads(urllib.request.urlopen(req, timeout=10).read())
     running = [m['id'] for m in resp.get('data', [])]
-    print(f'Router 回報模型: {running}')
+    print(f'Router reports models: {running}')
 except Exception as e:
-    print(f'❌ 無法連線 Router: {e}')
+    print(f'⚠ Router unreachable: {e}')
     sys.exit(1)
 
 if not running:
-    print('⚠ 沒有任何模型在運行，請先啟動至少一個模型')
+    print('⚠ No models running. Start a model first (e.g., bash scripts/12-start-manual.sh)')
     sys.exit(0)
 
-# 2. 讀取測試圖片
-with open('$TEST_IMG', 'rb') as f:
+# 2. Read test image
+test_img = 'test/test_bus.jpg'
+if not os.path.exists(test_img):
+    print(f'⚠ Test image not found: {test_img}')
+    sys.exit(1)
+with open(test_img, 'rb') as f:
     b64 = base64.b64encode(f.read()).decode()
 
-# 3. 只測試 Router 回報的模型（照固定順序）
-ALL_MODELS = ['reason2', 'moondream2', 'yolo']
-for model in ALL_MODELS:
+# 3. Test each model in fixed order (skip if not running)
+for model in ['reason2', 'moondream2', 'yolo']:
     if model not in running:
-        print(f'⊘ {model}: 未運行，跳過')
+        print(f'\n=== {model} ===')
+        print(f'  ⊘ not running, skipped')
         continue
 
     prompt = 'Describe this image in one sentence.' if model != 'yolo' else 'Detect objects'
@@ -55,12 +48,16 @@ for model in ALL_MODELS:
         'max_tokens': 100
     }).encode()
 
+    req = urllib.request.Request('http://localhost:8080/v1/chat/completions',
+        data=data, headers={'Content-Type':'application/json'})
     try:
-        req = urllib.request.Request('http://localhost:8080/v1/chat/completions',
-            data=data, headers={'Content-Type':'application/json'})
         resp = json.loads(urllib.request.urlopen(req, timeout=120).read())
         text = resp['choices'][0]['message']['content']
-        print(f'✓ {model}: {text[:100]}')
+        print(f'\n=== {model} ===')
+        print(f'  ✓ {text[:200]}')
     except Exception as e:
-        print(f'✗ {model}: ERROR - {e}')
+        print(f'\n=== {model} ===')
+        print(f'  ✗ Error: {e}')
+
+print('\n=== Done ===')
 "

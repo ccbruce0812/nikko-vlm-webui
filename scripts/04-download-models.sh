@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 # ============================================================
-# 下載 Reason2 + moondream2 + YOLO 模型（在 venv 中完成）
-# 對應 README.md → 模型下載
+# Download Reason2 + moondream2 + YOLO models (in venv)
+# Reference: README.md → Model Download
 # ============================================================
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
-echo "=== 建立 venv ==="
+echo "=== Create venv ==="
 python3 -m venv /tmp/model-dl-venv
 source /tmp/model-dl-venv/bin/activate
 pip install -q huggingface_hub ultralytics onnx
 
 echo ""
-echo "=== 下載 Reason2 (IQ4_XS 量化) ==="
+echo "=== Download Reason2 (IQ4_XS) ==="
 mkdir -p models/reason2
 cd models/reason2
 
@@ -29,7 +29,7 @@ hf download apolo13x/Cosmos-Reason2-2B-GGUF \
 cd "$PROJECT_ROOT"
 
 echo ""
-echo "=== 下載 moondream2 (q4_k 量化) ==="
+echo "=== Download moondream2 (q4_k) ==="
 mkdir -p models/moondream2
 cd models/moondream2
 
@@ -39,11 +39,11 @@ hf download salivosa/moondream2-gguf \
 cd "$PROJECT_ROOT"
 
 echo ""
-echo "=== 下載 YOLOv8n + 匯出 TensorRT ==="
+echo "=== Download YOLOv8n + export TensorRT ==="
 mkdir -p models/yolo
 cd models/yolo
 
-echo "  → 下載 YOLOv8n PyTorch 模型 (~6.5MB)"
+echo "  → Download YOLOv8n PyTorch model (~6.5MB)"
 python3 -c "
 from ultralytics import YOLO
 model = YOLO('yolov8n.pt')
@@ -52,7 +52,7 @@ shutil.move('yolov8n.pt', '.')
 print('Downloaded yolov8n.pt')
 "
 
-echo "  → 匯出 TensorRT engine (FP16, 需 GPU, ~13MB)"
+echo "  → Export TensorRT engine (FP16, needs GPU, ~13MB)"
 python3 -c "
 from ultralytics import YOLO
 model = YOLO('yolov8n.pt')
@@ -65,12 +65,12 @@ print('TensorRT engine exported')
 cd "$PROJECT_ROOT"
 
 echo ""
-echo "=== 清理 venv ==="
+echo "=== Clean up venv ==="
 deactivate
 rm -rf /tmp/model-dl-venv
 
 echo ""
-echo "=== 模型下載完成 ==="
+echo "=== Models downloaded ==="
 echo "Reason2:"
 ls -lh models/reason2/
 echo ""

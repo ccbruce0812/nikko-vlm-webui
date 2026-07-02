@@ -1,22 +1,19 @@
 #!/usr/bin/env bash
 # ============================================================
-# 磁碟空間清理
-# 對應 README.md → 疑難排解 → 磁碟空間不足
+# Clean up Docker disk space
+# Reference: README.md → Troubleshooting → 7. Disk space
 # ============================================================
 set -euo pipefail
 
-echo "=== 清理前磁碟使用量 ==="
-df -h / | tail -1
-echo ""
-
-echo "=== Docker 磁碟使用量 ==="
+echo "=== Docker disk usage before ==="
 sudo docker system df
 
 echo ""
-echo "=== 執行清理（移除未使用的映像、容器、快取）==="
+echo "=== Pruning all unused data ==="
 sudo docker system prune -af
 
 echo ""
-echo "=== 清理後磁碟使用量 ==="
-df -h / | tail -1
+echo "=== Docker disk usage after ==="
 sudo docker system df
+echo ""
+echo "✓ Cleanup complete"
