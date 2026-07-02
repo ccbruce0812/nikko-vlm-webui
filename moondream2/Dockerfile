@@ -11,7 +11,7 @@
 #   N_THREADS      — CPU threads              (default: 4)
 #   N_BATCH        — batch size               (default: 128)
 #   CTX_SIZE       — context size             (default: 1024)
-#   FLASH_ATTN     — FlashAttention on/off    (default: on)
+#   FLASH_ATTN     — FlashAttention on/off    (default: off, phi2 不相容)
 #   PORT           — server port              (default: 8001)
 FROM dustynv/l4t-pytorch:r36.4.0
 

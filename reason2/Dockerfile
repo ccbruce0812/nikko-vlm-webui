@@ -1,5 +1,6 @@
 # Reason2 GGUF container (qwen3vl architecture, formerly Cosmos-Reason2)
-# Builds llama.cpp from source for C++ llama-server (OpenAI-compatible API)
+# Uses pre-compiled llama-server binaries from packages/
+# C++ OpenAI-compatible API server
 #
 # Build: docker build -t reason2 -f reason2/Dockerfile .
 #
@@ -12,22 +13,12 @@
 #   CTX_SIZE       — context size             (default: 2048)
 #   FLASH_ATTN     — FlashAttention on/off    (default: on)
 #   PORT           — server port              (default: 8002)
-ARG BASE_IMAGE=dustynv/l4t-pytorch:r36.4.0
-FROM ${BASE_IMAGE} AS builder
+FROM dustynv/l4t-pytorch:r36.4.0
 
-WORKDIR /build
-RUN git clone --depth 1 https://github.com/ggerganov/llama.cpp.git && \
-    cd llama.cpp && \
-    cmake -B build \
-        -DGGML_CUDA=ON \
-        -DGGML_CUDA_FA=ON \
-        -DCMAKE_CUDA_ARCHITECTURES=87 \
-        -DCMAKE_BUILD_TYPE=Release && \
-    cmake --build build --config Release -j$(nproc)
-
-# Runtime stage
-FROM ${BASE_IMAGE}
-COPY --from=builder /build/llama.cpp/build/bin/ /usr/local/bin/
+# Deploy pre-compiled llama-server binaries
+COPY packages/llama-server-binaries.tar.gz /tmp/
+RUN tar xzf /tmp/llama-server-binaries.tar.gz -C /usr/local/bin/ && \
+    rm /tmp/llama-server-binaries.tar.gz
 ENV LD_LIBRARY_PATH=/usr/local/bin:$LD_LIBRARY_PATH
 ENV PATH=/usr/local/bin:$PATH
 

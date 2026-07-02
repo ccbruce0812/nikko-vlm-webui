@@ -19,16 +19,6 @@ else
 fi
 
 echo ""
-echo "=== Set serial console auto-login (UART) ==="
-sudo mkdir -p /etc/systemd/system/serial-getty@.service.d
-sudo tee /etc/systemd/system/serial-getty@.service.d/override.conf << 'EOF'
-[Service]
-ExecStart=
-ExecStart=-/sbin/agetty --autologin brucehsu --keep-baud 115200,57600,38400,9600 %I $TERM
-EOF
-echo "→ Auto-login configured for brucehsu"
-
-echo ""
 echo "=== Done ==="
 echo "Run 'sudo reboot' to apply. After reboot, verify:"
 echo "  systemctl get-default     → multi-user.target"
