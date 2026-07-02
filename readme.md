@@ -35,6 +35,7 @@ Router 會自動探測後端容器狀態，`/v1/models` 只回傳實際運行的
 - CUDA 12.6 (GPU Driver 540.4.0)
 - RAM: 7.4GB
 - 儲存空間: 至少 30GB 可用（Docker 映像 ~20GB + 模型 ~3.5GB）
+- [JetPack 6.2.1 Super SD Card Image](https://developer.nvidia.com/downloads/embedded/L4T/r36_Release_v4.4/jp62-r1-orin-nano-sd-card-image.zip)
 
 ## 前置準備
 
@@ -60,15 +61,6 @@ sudo systemctl enable NetworkManager
 nmcli dev wifi list                          # 列出可用 WiFi
 sudo nmcli dev wifi connect "SSID" password "YOUR_PASSWORD"
 # 連線成功後 NetworkManager 會自動儲存，往後開機自動重連
-
-# 設定 serial console 自動登入（Jetson 硬體 UART）
-# 避免 reboot 後還需要插螢幕鍵盤登入
-sudo mkdir -p /etc/systemd/system/serial-getty@.service.d
-sudo tee /etc/systemd/system/serial-getty@.service.d/override.conf << 'EOF'
-[Service]
-ExecStart=
-ExecStart=-/sbin/agetty --autologin brucehsu --keep-baud 115200,57600,38400,9600 %I $TERM
-EOF
 
 # 重開機驗證
 sudo reboot
