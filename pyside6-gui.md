@@ -1,0 +1,479 @@
+# Kiosk VLM GUI
+
+> This document covers the PySide6 kiosk GUI and headless validation tool.
+> For Docker backend, model setup, and system configuration see [readme.md](readme.md).
+
+## Overview
+
+Single-window kiosk GUI for live CSI camera streaming with router-based multi-model
+VLM inference. All AI inference is delegated to Docker containers via the Router API.
+A headless variant (`main_nogui.py`) is also provided for pipeline validation.
+
+### 1. Architecture
+
+```mermaid
+flowchart TB
+    subgraph Jetson["Jetson Orin Nano (Host)"]
+        CSI["CSI Camera<br/>(IMX219, CAM0)"]
+        GST["GStreamer Pipeline<br/>nvarguscamerasrc → NVMM → appsink"]
+        GUI["pyside6-gui<br/>(Kiosk Window)"]
+        JTOP["/proc + /sys<br/>(system monitor)"]
+    end
+
+    subgraph Docker["Docker Containers"]
+        RTR["Router :8080"]
+        MD["moondream2 :8001"]
+        R2["reason2 :8002"]
+        YL["yolo :8003"]
+    end
+
+    CSI --> GST --> GUI
+    JTOP --> GUI
+    GUI -->|"POST /v1/chat/completions<br/>(base64 image + prompt)"| RTR
+    RTR --> MD
+    RTR --> R2
+    RTR --> YL
+```
+
+- Frame Flow
+
+```
+CSI Camera → GStreamer (nvarguscamerasrc + NVMM zero-copy) → appsink
+    │
+    │  RGBA buffer (zero-copy wrap into QImage::Format_RGBA8888)
+    │
+    ├───→ Video Display (5/6 width, right side)
+    │     └─ YOLO boxes / VLM captions drawn as QPainter overlays
+    │
+    └───→ Capture Buffer (latest RGBA bytes)
+          └─ Every N sec: JPEG-encode via Gst.Buffer → base64 → POST to Router API
+```
+
+### 2. Design Decisions
+
+| Aspect | pyside6-gui |
+|--------|-------------|
+| **Video capture** | GStreamer `appsink` → RGBA buffer → `QImage` (zero-copy, no cv2) |
+| **AI inference** | Router API (docker containers), async HTTP |
+| **UI layout** | Single kiosk window, left sidebar + right video |
+| **Overlay drawing** | QPainter on QWidget (no cv2) |
+| **System monitor** | /proc + /sys overlay (GPU/VRAM/CPU/RAM) top-right |
+| **Camera source** | CSI only: `nvarguscamerasrc` with NVMM zero-copy |
+
+### 3. Hardware Requirements
+
+- **Xorg must be running** with `DISPLAY=:0` — Argus requires a display server for full-speed camera output
+- Running Docker containers: **Router** (required) + at least one model container
+
+> See [readme.md](readme.md) for Docker backend setup, model download, and container build.
+
+## Install & Launch
+
+| Step | Script |
+|------|--------|
+| System packages | `bash scripts/03-install-deps.sh` |
+| Python venv + PySide6 | `bash scripts/19-install-pyside6-gui.sh` |
+| Launch GUI | `bash scripts/20-start-pyside6-gui.sh` |
+| Launch headless | `bash scripts/21-start-pyside6-nogui.sh [args...]` |
+
+> Both launch scripts handle Xorg lifecycle automatically:
+> start Xorg `:0` (if not running), set `DISPLAY=:0`, restart `nvargus-daemon`,
+> then clean up on exit (only if Xorg was started by the script).
+> The headless script also sets `QT_QPA_PLATFORM=offscreen`.
+
+Venv is created at `pyside6-gui-venv/` in the project root.  The GUI source lives
+in `pyside6-gui/`.
+
+## UI Design
+
+### 1. Video Source
+
+| Control | Type | Description |
+|---------|------|-------------|
+| Camera ID | QComboBox | Scans `/dev/video*` at startup; re-scans on dropdown open |
+| Resolution/FPS | QComboBox | Populated via `v4l2-ctl --list-formats-ext` on startup or Camera ID change |
+
+**Pipeline:** `nvarguscamerasrc` with NVMM zero-copy. FPS is auto-detected from hardware capabilities via `v4l2-ctl`.
+
+### 2. AI Model
+
+| Control | Type | Default | Description |
+|---------|------|---------|-------------|
+| Model | QComboBox | (first available) | Populated from `GET /v1/models` on startup |
+| Processing Interval | QLineEdit (≥1) | 1 | Seconds between inference requests |
+| Prompt | QTextEdit | `"Describe this image in one sentence."` | Prompt sent to VLM (ignored by YOLO) |
+| Max Tokens | QLineEdit (1–2048) | 512 | Response token limit |
+
+### 3. Start / Stop
+
+```
+┌─ Left Sidebar (1/6) ──────┬─ Video Display (5/6) ────────────────────┐
+│                           │                                          │
+│  Video Source             │    ┌──────────────────────────────────┐  │
+│  Camera ID:  [0 ▼]        │    │                       1280x720@30│  │
+│  Res/FPS:    [1920x1080]  │    │                 GPU:45% VRAM:2.1G│  │
+│                           │    │                  CPU:62% RAM:3.8G│  │
+│                           │    │                                  │  │
+│  AI Model                 │    │                                  │  │
+│  Model:      [reason2 ▼]  │    │                                  │  │
+│  Interval:   [1] sec      │    │                                  │  │
+│  Prompt:                  │    │            Live Video            │  │
+│  ┌──────────────────────┐ │    │                                  │  │
+│  │Describe this image...│ │    │                                  │  │
+│  │                      │ │    │ ┌──────────────────────────────┐ │  │
+│  └──────────────────────┘ │    │ │ person 0.87 ┌────────┐       │ │  │
+│         Max Tokens: [512] │    │ │             │  car   │       │ │  │
+│                           │    │ └──────────────────────────────┘ │  │
+│                           │    └──────────────────────────────────┘  │
+│                           │                   [▶ START]  [✕ QUIT]   │
+└───────────────────────────┴──────────────────────────────────────────┘
+```
+
+1. Select camera and resolution.
+2. Pick an AI model from the dropdown (auto-populated from router).
+3. Set interval, prompt, and max tokens.
+4. Press **START** or hit `Alt+S`. The button changes to **STOP**.
+5. Video streams continuously. At each interval, a snapshot is sent to the Router API.
+6. Press **STOP** (`Alt+S`) to halt streaming and inference.
+7. Press **QUIT** (`Alt+Q`) or close the window to exit.
+
+### 4. Keyboard Navigation
+
+All controls support standard Qt keyboard navigation:
+
+- **Tab** / **Shift+Tab**: move focus between controls in logical order (Camera ID → Resolution → Model → Interval → Prompt → Max Tokens → START → QUIT)
+- **Space**: toggle checkboxes, activate focused buttons
+- **Arrow keys**: navigate QComboBox dropdown items
+- **Ctrl+Tab**: move focus out of QTextEdit (Prompt field)
+
+| Widget | Accelerator | Action |
+|--------|------------|--------|
+| START / STOP | `Alt+S` | Toggle streaming |
+| QUIT | `Alt+Q` | Exit application |
+| Camera ID | `Alt+C` | Focus camera dropdown |
+| Resolution | `Alt+R` | Focus resolution dropdown |
+| Model | `Alt+M` | Focus model dropdown |
+| Interval | `Alt+I` | Focus interval field |
+| Prompt | `Alt+P` | Focus prompt textarea |
+| Max Tokens | `Alt+T` | Focus max tokens field |
+
+Accelerator keys use `QPushButton::setShortcut()` / `QLabel::setBuddy()` and are displayed with underlined characters in button labels (e.g., **_S**TART, **_Q**UIT).
+
+## OSD Overlay and Performance
+
+### 1. Video Rendering Strategy
+
+The GStreamer pipeline outputs RGBA (not BGR):
+
+```
+nvarguscamerasrc ! video/x-raw(memory:NVMM),format=NV12 !
+  nvvidconv ! video/x-raw,format=RGBA !
+  appsink
+```
+
+This is intentional: the RGBA buffer maps directly to `QImage::Format_RGBA8888` with **zero pixel conversion** — `QImage` wraps the raw GStreamer buffer bytes via `QImage(uchar_ptr, w, h, Format_RGBA8888)` without copying or swizzling.
+
+| Approach | Cost per 1080p frame | Why not used |
+|----------|---------------------|--------------|
+| **RGBA → QImage (chosen)** | ~0.3ms wrap | — |
+| BGR → RGB → QImage (cv2-style) | ~3ms conversion | unnecessary extra pass |
+| QOpenGLWidget + texture | ~0.2ms upload | GL context management overhead; marginal gain |
+| nvoverlaysink (HW overlay) | 0ms | cannot draw QPainter UI elements on top |
+
+QPainter overlays (bounding boxes, caption bar, monitor text) add ~1–2ms per frame. Total rendering pipeline stays under 5ms at 1920×1080 — well within a 33ms budget at 30fps.
+
+**Resolution / Framerate Headroom:**
+
+Measured on Jetson Orin Nano with IMX219 (DISPLAY=:0 required for full speed):
+
+| Resolution | Target FPS | Measured FPS | Render Cost | Status |
+|-----------|-----|-------------|-------------|--------|
+| 1280×720 | 60 | ~59 (steady) | ~2ms | ✓ verified 15min stable |
+| 1920×1080 | 30 | ~29 (steady) | ~5ms | ✓ verified 15min stable |
+| 3280×2464 | 21 | — | ~8ms (est.) | untested |
+| 3840×2160 | 30 | — | ~10ms (est.) | not supported by IMX219 |
+
+**Critical:** Without `DISPLAY=:0` and a running Xorg server, Argus falls back to a slow
+capture path (~3 fps regardless of mode). Both `20-` and `21-` start scripts handle this
+automatically. When running `main_nogui.py` directly, you must export `DISPLAY=:0`.
+
+**4K notes:**
+
+- The main cost jump is QPainter text rendering at higher pixel density (~3ms → ~5ms) plus the larger RGBA buffer package (~33MB).
+- QImage **must** use the Qt6 zero-copy constructor (`uchar*` + explicit cleanup null) to avoid a 33MB per-frame memcpy — a deep copy at 4K adds ~4ms and pushes total to ~14ms (58% CPU), still viable but tight.
+- IMX219 max sensor resolution is 3280×2464 (not true 3840×2160); native 4K requires a different CSI sensor. Pipeline caps are uncapped to accommodate future sensors.
+- JPEG encoding for router API uploads uses GStreamer's `jpegenc` (hardware-accelerated on Jetson) via `nvjpegenc`, not Python/PIL — avoids O(width×height) CPU-bound encode at all resolutions.
+
+**1920×1080@60 note:** IMX219 maxes at 1080p@30. Confirm sensor capability before expecting 60fps at 1080p. 720p@60 is supported by IMX219 and validated.
+
+### 2. Overlay Behavior
+
+YOLO and VLM inference results are drawn on top of the live video via QPainter (no OpenCV dependency):
+
+| Model | Visual Overlay |
+|-------|---------------|
+| **YOLO** | Colored bounding boxes with class label and confidence score (e.g., `person 0.87`) |
+| **moondream2** | Semi-transparent black bar at image bottom with the prompt text as caption |
+| **reason2** | Semi-transparent black bar at image bottom with the prompt text as caption |
+
+### 3. System Monitor Overlay
+
+Top-right corner of the video display, updated every 5 seconds via /proc and /sys:
+
+```
+1280x720@30  GPU:45% VRAM:2.1G
+             CPU:62% RAM:3.8G
+```
+
+- **Resolution/FPS**: current input stream (e.g., `1920x1080@30`)
+- **GPU**: GPU utilization percentage
+- **VRAM**: GPU memory used (GiB)
+- **CPU**: CPU utilization percentage
+- **RAM**: System RAM used (GiB)
+
+## Router Integration
+
+### 1. Model Discovery (startup)
+
+```http
+GET http://localhost:8080/v1/models
+```
+
+Response:
+
+```json
+{
+  "object": "list",
+  "data": [
+    {"id": "reason2", "object": "model", "owned_by": "jetson"},
+    {"id": "moondream2", "object": "model", "owned_by": "jetson"},
+    {"id": "yolo", "object": "model", "owned_by": "jetson"}
+  ]
+}
+```
+
+Only available models appear in the dropdown. If a container is stopped, its model is excluded.
+
+### 2. Inference Request (per interval)
+
+```http
+POST http://localhost:8080/v1/chat/completions
+Content-Type: application/json
+
+{
+  "model": "reason2",
+  "messages": [{
+    "role": "user",
+    "content": [
+      {"type": "text", "text": "Describe this image in one sentence."},
+      {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,/9j/4AAQ..."}}
+    ]
+  }],
+  "max_tokens": 512
+}
+```
+
+### 3. Response Handling
+
+| Model | Response Content | Overlay Action |
+|-------|-----------------|----------------|
+| `reason2` | `{"choices":[{"message":{"content":"A blue bus parked on a city street."}}]}` | Draw caption bar |
+| `moondream2` | `{"choices":[{"message":{"content":"A blue bus parked on a city street."}}]}` | Draw caption bar |
+| `yolo` | `{"choices":[{"message":{"content":"[{\"class\":2,\"name\":\"car\",\"confidence\":0.87,\"bbox\":[...]}]"}}]}` | Draw colored bounding boxes |
+
+YOLO response is parsed as JSON; class name and confidence are drawn on each box.
+
+### 4. Design
+
+```mermaid
+sequenceDiagram
+    participant GST as GStreamer Pipeline
+    participant UI as MainWindow (UI Thread)
+    participant Timer as Interval Timer
+    participant Mod as Overlay Module<br/>(yolo / reason2 / moondream2)
+    participant RTR as Router :8080
+    participant Backend as Model Container<br/>(reason2 / moondream2 / yolo)
+
+    GST->>UI: frame_ready (RGBA, every ~33ms)
+    activate UI
+    UI->>UI: wrap QImage → QPainter → QPixmap → display
+    deactivate UI
+
+    loop Every N seconds (Interval)
+        Timer->>UI: tick
+        activate UI
+        UI->>Mod: latest RGBA frame + prompt/max_tokens
+        activate Mod
+        Mod->>Mod: resize frame, build API payload
+        Mod-->>UI: JSON payload
+        deactivate Mod
+        UI->>RTR: POST /v1/chat/completions (async, non-blocking)
+        UI->>UI: continue rendering video
+        deactivate UI
+
+        RTR->>Backend: forward request
+        activate Backend
+        Backend-->>RTR: inference result
+        deactivate Backend
+        RTR-->>UI: JSON response (async callback)
+        activate UI
+        UI->>Mod: response + current live frame
+        activate Mod
+        Mod->>Mod: YOLO: draw boxes / VLM: draw caption bar
+        Mod-->>UI: annotated frame
+        deactivate Mod
+        UI->>UI: update display with overlay
+        deactivate UI
+    end
+```
+
+- The GStreamer pipeline emits frames continuously; the UI never blocks waiting for inference.
+- At each interval tick, the latest frame is captured and sent to the Router asynchronously via `aiohttp` in a background `QThread`.
+- When the response arrives, the overlay module draws on the **current live frame** (not the original captured frame) — the display always shows up-to-date video.
+- If a new interval tick fires before the previous response arrives, the pending response is dropped (drop-stale).
+
+## Headless Validation Mode
+
+A terminal-only variant (`main_nogui.py`) reuses the same GStreamer pipeline and router modules without opening a PySide6 window. Useful for validating the camera pipeline and model Docker containers before running the full GUI.
+
+> 📄 Launch: `scripts/21-start-pyside6-nogui.sh`
+
+### 1. Design
+
+Same core modules as the GUI (`video_source.py`, `router_client.py`, `yolo_overlay.py`, `reason2_overlay.py`, `moondream2_overlay.py`) — only the UI layer (`kiosk_window.py`, `video_display.py`, `control_sidebar.py`) is replaced by a CLI loop:
+
+```
+CLI args → GStreamer pipeline → appsink → RGBA buffer
+                                            │
+    ┌───────────────────────────────────────┘
+    │
+    ├──→ Console log: "Streaming 1920x1080@30 — waiting for interval tick..."
+    │
+    └──→ Every N sec: JPEG-encode → POST /v1/chat/completions
+              │
+              └──→ Response → Overlay Module → print result to stdout
+```
+
+Ctrl-C triggers `GStreamer pipeline teardown → router_client cleanup → exit`.
+
+### 2. CLI Arguments
+
+All arguments are validated at startup. Invalid values produce descriptive errors and exit before
+starting the pipeline.
+
+| Argument | Type | Default | Validation |
+|----------|------|---------|-------------|
+| `--camera-id` | int | 0 | Must exist at `/dev/video{id}` |
+| `--resolution` | str | `1920x1080` | Must match a mode from `v4l2-ctl --list-formats-ext` |
+| `--framerate` | int | 0 (auto) | Capped to hardware max if exceeded; warning logged |
+| `--model` | str | `reason2` | Must appear in `GET /v1/models` response |
+| `--interval` | int | 1 | Clamped to ≥1 second |
+| `--prompt` | str | `"Describe this image in one sentence."` | — |
+| `--max-tokens` | int | 512 | Clamped to 1–2048 |
+
+### 3. Usage
+
+```bash
+# Via script (recommended — handles Xorg, DISPLAY, nvargus-daemon)
+bash scripts/21-start-pyside6-nogui.sh \
+    --camera-id 0 --resolution 1280x720@60 \
+    --model reason2 --interval 10 --max-tokens 100
+
+# Direct (requires DISPLAY=:0 + nvargus-daemon restart)
+DISPLAY=:0 QT_QPA_PLATFORM=offscreen python main_nogui.py \
+    --camera-id 0 --resolution 1920x1080 --model yolo --interval 5
+```
+
+**Validation errors** (descriptive, exits before pipeline starts):
+
+```
+Parameter validation failed:
+  • Camera 99 not found (/dev/video99)
+  • Resolution 100x100 not supported. Available: 3280x2464@21, ...
+  • max-tokens=9999 out of range (1–2048)
+  • Router reports no models running. Start a model container (e.g. reason2).
+  • Cannot reach router at localhost:8080 — Connection refused
+```
+
+Sample console output:
+
+```
+[16:04:01] Streaming 1920x1080@30 — interval 1s, model reason2
+[16:04:02] POST /v1/chat/completions → reason2 (175842 bytes)
+[16:04:14] reason2: "A blue bus parked on a city street with buildings in the background."
+[16:04:15] POST /v1/chat/completions → reason2 (175842 bytes)
+[16:04:26] reason2: "A city street scene with a blue bus and several pedestrians."
+^C
+[16:04:30] Shutting down — pipeline stopped, client closed.
+```
+
+## Troubleshooting
+
+### 1. FPS only ~3 instead of 30/60
+
+**Root cause:** Argus (nvarguscamerasrc) requires an X server for full-speed capture.
+Without `DISPLAY=:0`, it falls back to ~3 fps regardless of sensor mode.
+
+**Fix:** Ensure Xorg is running and `DISPLAY=:0` is set. Both `20-` and `21-` start scripts
+handle this automatically. When running directly:
+
+```bash
+export DISPLAY=:0
+sudo systemctl restart nvargus-daemon
+```
+
+Verify with: `gst-launch-1.0 nvarguscamerasrc ! ... ! fpsdisplaysink video-sink=fakesink`
+
+### 2. No video — black screen
+
+```bash
+# Restart nvargus-daemon (CSI cameras only)
+sudo systemctl restart nvargus-daemon
+
+# Verify camera is detected
+ls /dev/video*
+v4l2-ctl -d /dev/video0 --list-formats-ext
+
+# Test raw GStreamer pipeline
+gst-launch-1.0 nvarguscamerasrc ! 'video/x-raw(memory:NVMM),width=1280,height=720,format=NV12' ! nvvidconv ! ximagesink
+```
+
+### 3. "Module 'gi' not found"
+
+```bash
+# Ensure GObject Introspection is installed at system level
+sudo apt install -y gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0
+
+# Venv must be created with --system-site-packages
+rm -rf pyside6-gui-venv
+python3 -m venv --system-site-packages pyside6-gui-venv
+source pyside6-gui-venv/bin/activate
+pip install pyside6 aiohttp
+```
+
+### 4. Model dropdown empty
+
+```bash
+# Check router is running
+curl -s http://localhost:8080/health
+
+# Check which models are available
+curl -s http://localhost:8080/v1/models | python3 -m json.tool
+
+# Start a model container if needed
+bash scripts/06-start-reason2.sh  # or 08-start-moondream2.sh, 10-start-yolo.sh
+```
+
+### 5. Inference returns error
+
+- YOLO response is not valid JSON → check router logs: `sudo docker logs router`
+- Timeout → model container may be OOM: `sudo docker logs reason2`
+- Ensure only one model container is running at a time (Orin Nano has limited CMA memory)
+
+### 6. PySide6 crashes on startup: "Could not load Qt platform plugin"
+
+```bash
+sudo apt install -y libxcb-cursor0
+export QT_QPA_PLATFORM=xcb
+```
+

@@ -23,13 +23,12 @@ flowchart LR
 
 ### 2. Router Dynamic Model Detection
 
-Router auto-probes backend containers. `/v1/models` only returns actually running models.
+### 3. Kiosk GUI & Headless Tool
 
-- Container stops → auto-removed from list
-- Container starts → appears within 3 seconds
-- WebUI model dropdown updates in real-time
+A PySide6 kiosk GUI and headless pipeline validation tool are provided in `pyside6-gui/`.
+See [pyside6-gui.md](pyside6-gui.md) for setup, UI design, and usage.
 
-### 3. Hardware Requirements
+### 4. Hardware Requirements
 
 - **NVIDIA Jetson Orin Nano** (JetPack 6.2.1 / L4T R36.4.7)
 - CUDA 12.6 (GPU Driver 540.4.0)
@@ -273,7 +272,7 @@ echo "nvpmodel mode: $(sudo nvpmodel -q | grep 'NV Power Mode')"
 sudo docker info | grep Runtime
 
 # Install python3-venv (required by model download script)
-sudo apt-get install -y python3-venv
+sudo apt-get install -y python3-venv v4l-utils libxcb-cursor0 python3-pip
 ```
 
 > 📄 Script: `scripts/03-install-deps.sh` (run: `bash scripts/03-install-deps.sh`)
@@ -750,8 +749,29 @@ sudo docker system prune -af
 │   ├── 15-stop-rtsp-server.sh          # stop RTSP Server
 │   ├── 16-test-quick.sh                # quick model validation
 │   ├── 17-troubleshoot-reason2-oom.sh  # Reason2 OOM fix
-│   └── 18-cleanup-disk.sh              # Docker disk cleanup
+│   ├── 18-cleanup-disk.sh              # Docker disk cleanup
+│   ├── 19-install-pyside6-gui.sh       # pyside6-gui venv + packages
+│   ├── 20-start-pyside6-gui.sh         # launch kiosk GUI
+│   └── 21-start-pyside6-nogui.sh       # launch headless validation
+├── pyside6-gui/
+│   ├── main.py                         # GUI entry point
+│   ├── main_nogui.py                   # headless entry point
+│   ├── assets/
+│   │   └── style.qss                   # dark theme stylesheet
+│   └── src/
+│       ├── ui/
+│       │   ├── kiosk_window.py
+│       │   ├── video_display.py
+│       │   └── control_sidebar.py
+│       └── modules/
+│           ├── video_source.py
+│           ├── router_client.py
+│           ├── yolo_overlay.py
+│           ├── reason2_overlay.py
+│           ├── moondream2_overlay.py
+│           └── system_monitor.py
 ├── readme.md
+├── pyside6-gui.md
 ├── log.md
 └── porting.md
 ```
