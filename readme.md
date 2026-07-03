@@ -320,7 +320,9 @@ cd ../..
 
 ### 4. YOLO (TensorRT)
 
-Requires Jetson GPU. Export with `quantize=16` (FP16).
+Requires `.pt` model file. TensorRT engine is generated inside the Docker container
+at first inference (the correct JetPack PyTorch is only available inside the container,
+not in the download venv).
 
 ```bash
 mkdir -p models/yolo
@@ -329,20 +331,8 @@ cd models/yolo
 # Download YOLOv8n PyTorch model (~6.5MB)
 python3 -c "
 from ultralytics import YOLO
-model = YOLO('yolov8n.pt')
-import shutil
-shutil.move('yolov8n.pt', '.')
+model = YOLO('yolov8n.pt')  # downloads to current dir
 print('Downloaded yolov8n.pt')
-"
-
-# Export TensorRT engine (FP16, ~13MB)
-python3 -c "
-from ultralytics import YOLO
-model = YOLO('yolov8n.pt')
-model.export(format='engine', device=0, quantize=16, imgsz=640)
-import shutil
-shutil.move('yolov8n.engine', '.')
-print('TensorRT engine exported')
 "
 
 cd ../..
