@@ -27,7 +27,7 @@ echo ""
 free -h
 
 echo ""
-echo "=== 2. CSI Camera Setup (CAM0 / IMX219) ==="
+echo "=== 2. CSI Camera Setup (IMX219) ==="
 if [ -e /dev/video0 ]; then
     echo "✓ /dev/video0 present"
     if v4l2-ctl -d /dev/video0 --list-formats 2>/dev/null | head -5; then
@@ -36,10 +36,10 @@ if [ -e /dev/video0 ]; then
 else
     echo "⚠ /dev/video0 not found. Configure IMX219 camera:"
     echo ""
-    echo "  1. Ensure IMX219 is connected to CAM0 (CSI connector near power jack)"
+    echo "  1. Ensure IMX219 is connected to CAM0 or CAM1 (CSI connector near power jack)"
     echo "  2. sudo /opt/nvidia/jetson-io/jetson-io.py"
     echo "     Select \"Configure for compatible camera\""
-    echo "     → Check \"Camera IMX219 Dual\" or \"Camera IMX219 Single\""
+    echo "     → Check \"Camera IMX219 Dual (CAM0 + CAM1)\" or \"Camera IMX219 A (CAM0)\""
     echo "     → Save and reboot to reconfigure pins"
     echo "  3. After reboot, /dev/video0 will appear"
     echo ""

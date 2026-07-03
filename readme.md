@@ -213,12 +213,12 @@ echo "=== Current CMA / GPU available memory ==="
 cat /proc/meminfo | grep -E "^Cma|^MemAvailable"
 free -h
 
-# Configure CSI camera (CAM0 / IMX219)
+# Configure CSI camera (IMX219)
 # If /dev/video0 missing, use jetson-io.py to set device tree overlay
 if [ ! -e /dev/video0 ]; then
   echo "⚠ /dev/video0 not found"
   echo "→ sudo /opt/nvidia/jetson-io/jetson-io.py"
-  echo "  Select Configure for compatible camera → IMX219 → Save and reboot"
+  echo "  Select Configure for compatible camera → IMX219 Dual / IMX219-A / IMX219-C → Save and reboot"
 fi
 
 # Check Super Mode (25W) support
@@ -399,7 +399,7 @@ sudo docker build -t rtsp-server rtsp-server/
 | `reason2` | `reason2` | 8002 | Reason2 GGUF inference |
 | `yolo` | `yolo` | 8003 | YOLO TensorRT object detection |
 | `live-vlm-webui` | `live-vlm-webui` | 8090 | Web frontend, WebRTC camera |
-| `rtsp-server` | `rtsp-server` | 8554 | CSI camera RTSP stream (IMX219 / CAM0) |
+| `rtsp-server` | `rtsp-server` | 8554 | CSI camera RTSP stream (IMX219) |
 
 ## Start Services
 
