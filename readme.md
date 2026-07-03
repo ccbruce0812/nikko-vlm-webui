@@ -43,6 +43,12 @@ Router auto-probes backend containers. `/v1/models` only returns actually runnin
 Download the [JetPack 6.2.1 Super SD Card Image](https://developer.nvidia.com/downloads/embedded/L4T/r36_Release_v4.4/jp62-r1-orin-nano-sd-card-image.zip) and flash to SD card using [balenaEtcher](https://github.com/balena-io/etcher/releases/download/v2.1.6/balenaEtcher-2.1.6.Setup.exe). Insert the card and boot.
 
 ### 2. Complete Setup in Terminal
+- Update stock packages
+
+```bash
+sudo apt-get update
+sudo apt-get upgrade
+```
 
 - Generate SSH key locally and copy to remote (passwordless login)
 
