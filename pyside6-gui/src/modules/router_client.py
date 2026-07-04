@@ -60,7 +60,10 @@ class RouterClient(QThread):
     def run(self):
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
-        self._loop.run_until_complete(self._worker())
+        try:
+            self._loop.run_until_complete(self._worker())
+        except RuntimeError:
+            pass  # event loop stopped during shutdown
 
     async def _worker(self):
         connector = aiohttp.TCPConnector(limit=2)
@@ -107,6 +110,7 @@ class RouterClient(QThread):
 
     def stop(self):
         self.requestInterruption()
-        if self._loop:
-            self._loop.call_soon_threadsafe(self._loop.stop)
-        self.wait()
+        if hasattr(self, '_loop'):
+            if self._loop.is_running():
+                self._loop.call_soon_threadsafe(self._loop.stop)
+            self.wait(2000)

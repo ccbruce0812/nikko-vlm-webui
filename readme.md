@@ -94,10 +94,13 @@ sudo apt-get upgrade
 ### 5. Disable GUI
 
 Jetson boots into graphical desktop by default (~500MB RAM consumed).
-Switch to multi-user.target to free memory, but keep Xorg available for
-nvarguscamerasrc (Argus requires a running X server for full-speed capture).
+Switch to multi-user.target to free memory, but keep Xorg + openbox available for
+GPU-accelerated applications (Argus requires Xorg, kiosk GUI requires a window manager).
 
 ```bash
+# Install openbox (lightweight window manager)
+sudo apt install -y openbox
+
 # Switch boot target to text mode
 sudo systemctl set-default multi-user.target
 

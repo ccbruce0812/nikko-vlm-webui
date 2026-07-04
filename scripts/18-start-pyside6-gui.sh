@@ -29,6 +29,13 @@ if [ ! -f "${VENV_DIR}/bin/activate" ]; then
     exit 1
 fi
 
+# ---- Already running? ----
+if pgrep -f 'python main.py' >/dev/null 2>&1; then
+    echo "[ERROR] Kiosk GUI is already running."
+    echo "        Stop it first: Alt+Q or kill -2 \$(pgrep -f 'python main.py')"
+    exit 1
+fi
+
 # ---- Xorg (required by nvarguscamerasrc) ----
 if ! pgrep -x Xorg >/dev/null 2>&1; then
     echo "[ERROR] Xorg is not running."
@@ -46,7 +53,9 @@ sleep 2
 
 # ---- MAXN Super Mode (25W) ----
 echo "[INFO] Setting MAXN Super Mode (25W)..."
-sudo nvpmodel -m 2
+if ! sudo nvpmodel -q 2>/dev/null | grep -q "NV Power Mode: MAXN_SUPER"; then
+    sudo nvpmodel -m 2
+fi
 sudo jetson_clocks
 
 # ---- Memory tuning ----
@@ -58,7 +67,16 @@ sudo sync
 sudo sysctl -w vm.drop_caches=3
 sudo sysctl -w vm.compact_memory=1
 
+# ---- Window manager (required for keyboard input) ----
+if ! pgrep -x openbox >/dev/null 2>&1; then
+    echo "[ERROR] openbox is not running."
+    echo "        Run: sudo systemctl start openbox"
+    echo "        Or:  bash scripts/01-disable-gui.sh (one-time setup)"
+    exit 1
+fi
+
 # ---- Launch ----
+export QT_QPA_PLATFORM=xcb
 source "${VENV_DIR}/bin/activate"
 cd "${GUI_DIR}"
 python main.py

@@ -144,7 +144,7 @@ class VideoSource(QThread):
             f"format=NV12,framerate={fps}/1 ! "
             f"nvvidconv flip-method=0 ! "
             f"video/x-raw,format=RGBA ! "
-            f"appsink name=sink emit-signals=true max-buffers=2 drop=true sync=false"
+            f"appsink name=sink emit-signals=true max-buffers=1 drop=true sync=false"
         )
         logger.info("GStreamer pipeline: %s", pipeline_str)
         return pipeline_str

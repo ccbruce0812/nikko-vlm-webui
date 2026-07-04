@@ -17,7 +17,7 @@ def _draw_caption(qimage: QImage, text: str) -> QImage:
     w, h = result.width(), result.height()
     painter = QPainter(result)
 
-    font_size = max(12, w // 60)
+    font_size = max(12, w // 100)
     font = QFont("monospace", font_size)
     painter.setFont(font)
 

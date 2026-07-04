@@ -5,9 +5,9 @@ Orchestrates video_source, router_client, overlay modules, and system monitor.
 import base64
 import logging
 
-from PySide6.QtWidgets import QMainWindow, QHBoxLayout, QWidget
-from PySide6.QtCore import QTimer, Slot, QThread, QBuffer
-from PySide6.QtGui import QImage
+from PySide6.QtWidgets import QMainWindow, QHBoxLayout, QWidget, QPushButton, QSizePolicy
+from PySide6.QtCore import QTimer, Slot, QThread, QBuffer, Qt
+from PySide6.QtGui import QImage, QShortcut, QKeySequence
 
 from src.ui.control_sidebar import ControlSidebar
 from src.ui.video_display import VideoDisplay
@@ -36,6 +36,9 @@ class KioskWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Kiosk VLM GUI")
+
+        # Global shortcuts
+        QShortcut(QKeySequence("Escape"), self, self.close)
 
         # Modules
         self._video_source = None
@@ -73,8 +76,17 @@ class KioskWindow(QMainWindow):
         layout.setSpacing(0)
 
         self._sidebar.setFixedWidth(self._sidebar.sizeHint().width())
-        layout.addWidget(self._sidebar, 1)
-        layout.addWidget(self._display, 5)
+        layout.addWidget(self._sidebar, 2)
+
+        # Video area: center the display widget
+        from PySide6.QtWidgets import QVBoxLayout
+        video_wrap = QWidget()
+        vw = QVBoxLayout(video_wrap)
+        vw.setContentsMargins(0, 0, 0, 0)
+        vw.setAlignment(Qt.AlignCenter)
+        self._display.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        vw.addWidget(self._display)
+        layout.addWidget(video_wrap, 3)
 
     def _connect_signals(self):
         self._sidebar.start_clicked.connect(self._on_start)
@@ -111,7 +123,16 @@ class KioskWindow(QMainWindow):
             self._video_source = None
         self._sidebar.set_streaming_state(False)
         self._display.set_frame(QImage())
-        self._display.set_overlay_frame(QImage())
+
+    def _on_toggle(self):
+        """Toggle streaming."""
+        if self._video_source is None:
+            cam_id = self._sidebar.camera_combo.currentData() or 0
+            w, h, _ = VideoSource.parse_resolution(
+                self._sidebar.resolution_combo.currentText())
+            self._on_start(cam_id, w, h)
+        else:
+            self._on_stop()
 
     # ----- system monitor (no jetson-stats) -----
 
@@ -162,14 +183,7 @@ class KioskWindow(QMainWindow):
     @Slot(str, str)
     def _on_inference_result(self, model, response_text):
         self._pending_inference = False
-
-        if self._latest_frame is None:
-            return
-
-        fn = DRAW.get(model)
-        if fn:
-            annotated = fn(self._latest_frame, response_text)
-            self._display.set_overlay_frame(annotated)
+        self._display.set_overlay_text(response_text)
 
         params = self._sidebar.get_params()
         interval_ms = max(1, params["interval"]) * 1000
@@ -181,6 +195,17 @@ class KioskWindow(QMainWindow):
     def _on_router_error(self, msg):
         self._pending_inference = False
         logger.error("Router: %s", msg)
+
+    # ----- keyboard -----
+
+    def keyPressEvent(self, event):
+        """Alt+Q = quit, Alt+S = toggle (Qt/xcb on Jetson)."""
+        if event.key() == Qt.Key_Q and (event.modifiers() & Qt.AltModifier):
+            self.close()
+        elif event.key() == Qt.Key_S and (event.modifiers() & Qt.AltModifier):
+            self._on_toggle()
+        else:
+            super().keyPressEvent(event)
 
     # ----- cleanup -----
 

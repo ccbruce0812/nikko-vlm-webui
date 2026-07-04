@@ -1,91 +1,132 @@
 """
-Video display widget (5/6 width).
-Shows live QImage frames with overlay support and system monitor stats.
+Video display widget (3/5 width).
+Shows live QImage frames centered with aspect ratio, plus overlay text and system monitor.
 """
-from PySide6.QtWidgets import QWidget
-from PySide6.QtGui import QPainter, QColor, QFont, QPen
+from PySide6.QtWidgets import QWidget, QSizePolicy
+from PySide6.QtGui import QPainter, QColor, QFont, QImage
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QImage, QPixmap
 
 
 class VideoDisplay(QWidget):
-    """Widget that displays a QImage frame with optional overlays."""
+    """Widget that displays a QImage frame centered with KeepAspectRatio."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumSize(640, 360)
-        self._frame = None          # QImage
-        self._overlay_frame = None  # QImage (annotated by overlay module)
+        self.setMinimumSize(320, 180)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._frame = None
+        self._overlay_text = ""
+        self._img_rect = None  # last scaled image rect for caption positioning
         self._stats = {"gpu": 0, "cpu": 0, "ram": 0, "vram": 0}
         self._res_fps = "—"
 
+    # ---- aspect ratio ----
+
+    def _aspect_ratio(self):
+        img = self._frame
+        if img and not img.isNull():
+            w, h = img.width(), img.height()
+            if h > 0:
+                return w / h
+        return 16.0 / 9.0
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, w):
+        return int(w / self._aspect_ratio())
+
+    # ---- input ----
+
     def set_frame(self, qimage: QImage):
-        """Set the raw camera frame."""
         self._frame = qimage
+        self.updateGeometry()
         self.update()
 
-    def set_overlay_frame(self, qimage: QImage):
-        """Set the annotated frame (with YOLO boxes or VLM caption)."""
-        self._overlay_frame = qimage
+    def set_overlay_text(self, text: str):
+        self._overlay_text = text
         self.update()
 
     def set_stats(self, stats: dict):
-        """Update system monitor stats."""
         self._stats.update(stats)
         self.update()
 
     def set_res_fps(self, text: str):
-        """Set resolution/FPS display string, e.g. '1920x1080@30'."""
         self._res_fps = text
 
     def current_frame(self) -> QImage:
-        """Return the latest clean frame (for capture)."""
         return self._frame
+
+    # ---- paint ----
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.SmoothPixmapTransform)
-
-        # Fill background black
         painter.fillRect(self.rect(), QColor(0, 0, 0))
 
-        # Draw frame (annotated if available, else raw)
-        image = self._overlay_frame if self._overlay_frame else self._frame
-        if image and not image.isNull():
-            scaled = image.scaled(
+        if self._frame and not self._frame.isNull():
+            scaled = self._frame.scaled(
                 self.width(), self.height(),
                 Qt.KeepAspectRatio, Qt.SmoothTransformation,
             )
             x = (self.width() - scaled.width()) // 2
             y = (self.height() - scaled.height()) // 2
             painter.drawImage(x, y, scaled)
+            from PySide6.QtCore import QRect
+            self._img_rect = QRect(x, y, scaled.width(), scaled.height())
+        else:
+            self._img_rect = None
 
-        # Draw system monitor overlay (top-right)
+        # Draw text caption at bottom
+        if self._overlay_text:
+            self._draw_caption(painter)
+
         self._draw_monitor(painter)
-
         painter.end()
 
+    def _draw_caption(self, painter):
+        text = self._overlay_text
+        if self._img_rect is None:
+            return
+        r = self._img_rect
+
+        painter.setFont(self.font())
+        metrics = painter.fontMetrics()
+        line_h = metrics.height() + 4
+        bar_h = line_h * 5               # exactly 5 lines
+        bar_w = int(r.width() * 0.94)     # 94% of image width
+        gap = int(r.height() * 0.02)      # 2% gap from bottom
+
+        bx = r.x() + (r.width() - bar_w) // 2
+        by = r.y() + r.height() - bar_h - gap
+
+        painter.fillRect(bx, by, bar_w, bar_h, QColor(0, 0, 0, 160))
+        painter.setPen(Qt.white)
+        painter.drawText(bx + 6, by, bar_w - 12, bar_h,
+                         Qt.AlignLeft | Qt.AlignVCenter | Qt.TextWordWrap, text)
+
     def _draw_monitor(self, painter):
+        if self._img_rect is None:
+            return
+        r = self._img_rect
         gpu = self._stats.get("gpu", 0)
         cpu = self._stats.get("cpu", 0)
         ram = self._stats.get("ram", 0)
-        vram = self._stats.get("vram", 0)
 
-        font = QFont("monospace", max(10, self.width() // 100))
-        font.setBold(True)
-        painter.setFont(font)
+        # Single line: "1920x1080@30 GPU:45% CPU:62% RAM:3.8G"
+        text = f"{self._res_fps}  GPU:{gpu:.0f}%  CPU:{cpu:.0f}%  RAM:{ram:.1f}G"
 
-        text = f"{self._res_fps}  GPU:{gpu:.0f}% VRAM:{vram:.1f}G\nCPU:{cpu:.0f}% RAM:{ram:.1f}G"
-
-        # Semi-transparent background
+        painter.setFont(self.font())
         fm = painter.fontMetrics()
-        lines = text.split("\n")
-        max_w = max(fm.horizontalAdvance(line) for line in lines)
-        line_h = fm.height() + 2
-        total_h = line_h * len(lines) + 6
+        bar_w = fm.horizontalAdvance(text) + 12  # auto-fit text
+        bar_h = fm.height() + 4
+        gap_x = int(r.width() * 0.02)             # 2% from right
+        gap_y = int(r.height() * 0.02)            # 2% from top
 
-        x = self.width() - max_w - 16
-        y = 8
-        painter.fillRect(x - 4, y, max_w + 8, total_h, QColor(0, 0, 0, 140))
+        bx = r.x() + r.width() - bar_w - gap_x
+        by = r.y() + gap_y
+
+        painter.fillRect(bx, by, bar_w, bar_h, QColor(0, 0, 0, 140))
         painter.setPen(Qt.white)
-        painter.drawText(x, y + line_h - 4, text)
+        painter.drawText(bx + 3, by, bar_w - 6, bar_h,
+                         Qt.AlignLeft | Qt.AlignVCenter, text)

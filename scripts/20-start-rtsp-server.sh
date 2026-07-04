@@ -92,7 +92,9 @@ sleep 2
 
 # ---- MAXN Super Mode (25W) ----
 echo "[INFO] Setting MAXN Super Mode (25W)..."
-sudo nvpmodel -m 2
+if ! sudo nvpmodel -q 2>/dev/null | grep -q "NV Power Mode: MAXN_SUPER"; then
+    sudo nvpmodel -m 2
+fi
 sudo jetson_clocks
 
 # ---- Memory tuning ----

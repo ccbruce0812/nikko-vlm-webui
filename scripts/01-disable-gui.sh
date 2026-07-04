@@ -10,11 +10,15 @@ sudo systemctl set-default multi-user.target
 echo "→ Default target: multi-user"
 
 echo ""
+echo "=== Install openbox (window manager, required for kiosk GUI) ==="
+sudo apt install -y openbox
+
+echo ""
 echo "=== Create xorg.service (Xorg under multi-user.target) ==="
 sudo tee /etc/systemd/system/xorg.service > /dev/null << 'EOF'
 [Unit]
 Description=Xorg display server
-After=multi-user.target
+Before=openbox.service
 
 [Service]
 ExecStart=/usr/bin/Xorg :0 -nolisten tcp -noreset
@@ -26,6 +30,44 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable xorg.service
 echo "→ xorg.service enabled (auto-start after reboot)"
+
+echo ""
+echo "=== Create openbox.service (window manager) ==="
+sudo tee /etc/systemd/system/openbox.service > /dev/null << EOF
+[Unit]
+Description=Openbox window manager
+After=xorg.service
+Requires=xorg.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/openbox
+Environment=DISPLAY=:0
+User=${USER}
+Restart=no
+
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl daemon-reload
+sudo systemctl enable openbox.service
+echo "→ openbox.service enabled"
+
+mkdir -p ~/.config/openbox
+cat > ~/.config/openbox/rc.xml << 'RCEOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<openbox_config>
+  <keyboard>
+    <chainQuitKey>C-g</chainQuitKey>
+  </keyboard>
+  <applications>
+    <application name="Kiosk VLM GUI" class="main.py">
+      <decor>no</decor>
+    </application>
+  </applications>
+</openbox_config>
+RCEOF
+echo "→ openbox RC configured (undecorated kiosk window)"
 
 echo ""
 echo "=== Done ==="

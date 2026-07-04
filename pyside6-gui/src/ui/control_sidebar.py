@@ -1,25 +1,26 @@
 """
 Left sidebar control panel (1/6 width).
-Contains Video Source and AI Model configuration sections.
+Grid layout — uniform spacing, no QGroupBox padding issues.
 """
 import os
 import re
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QComboBox, QLineEdit, QTextEdit, QGroupBox, QSizePolicy,
+    QWidget, QGridLayout, QHBoxLayout, QLabel,
+    QComboBox, QLineEdit, QTextEdit, QPushButton, QSizePolicy,
 )
 from PySide6.QtCore import Signal, Qt
+from PySide6.QtGui import QFont
 
 from src.modules.video_source import VideoSource
 
 
 class ControlSidebar(QWidget):
-    """Kiosk sidebar: camera/model controls + START/STOP/QUIT buttons."""
+    """Kiosk sidebar: camera/model controls in uniform grid."""
 
-    start_clicked = Signal(int, int, int)       # camera_id, width, height
+    start_clicked = Signal(int, int, int)
     stop_clicked = Signal()
     quit_clicked = Signal()
-    model_changed = Signal(str)                  # model name
+    model_changed = Signal(str)
     interval_changed = Signal(int)
     prompt_changed = Signal(str)
     max_tokens_changed = Signal(int)
@@ -32,86 +33,104 @@ class ControlSidebar(QWidget):
         self._refresh_devices()
 
     def _init_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setSpacing(8)
-        layout.setContentsMargins(8, 8, 8, 8)
+        grid = QGridLayout(self)
 
-        # ---- Video Source ----
-        src_group = QGroupBox("Video Source")
-        src_layout = QVBoxLayout(src_group)
+        # Spacing = 5% of sidebar width (sidebar = 2/5 of screen)
+        from PySide6.QtWidgets import QApplication
+        sw = QApplication.primaryScreen().size().width() if QApplication.instance() else 1920
+        sp = max(6, int(sw * 2 / 5 * 0.02))
+        grid.setSpacing(sp)
+        grid.setContentsMargins(sp, sp, sp, sp)
+        grid.setColumnStretch(0, 0)
+        grid.setColumnStretch(1, 1)
 
-        row1 = QHBoxLayout()
-        row1.addWidget(QLabel("Camera ID:"))
+        bold = QFont()
+        bold.setBold(True)
+        r = 0
+
+        # ---- Section: Video Source ----
+        hdr = QLabel("Video Source"); hdr.setFont(bold)
+        grid.addWidget(hdr, r, 0, 1, 2); r += 1
+
+        grid.addWidget(QLabel("Camera ID:"), r, 0)
         self.camera_combo = QComboBox()
         self.camera_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        row1.addWidget(self.camera_combo)
-        src_layout.addLayout(row1)
+        grid.addWidget(self.camera_combo, r, 1); r += 1
 
-        row2 = QHBoxLayout()
-        row2.addWidget(QLabel("Res/FPS:"))
+        grid.addWidget(QLabel("Res/FPS:"), r, 0)
         self.res_combo = QComboBox()
         self.res_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        row2.addWidget(self.res_combo)
-        src_layout.addLayout(row2)
+        grid.addWidget(self.res_combo, r, 1); r += 1
 
-        layout.addWidget(src_group)
+        grid.setRowMinimumHeight(r, 12); r += 1  # spacer row
 
-        # ---- AI Model ----
-        ai_group = QGroupBox("AI Model")
-        ai_layout = QVBoxLayout(ai_group)
+        # Separator line
+        from PySide6.QtWidgets import QFrame
+        sep = QFrame()
+        sep.setFrameShape(QFrame.HLine)
+        sep.setFrameShadow(QFrame.Sunken)
+        sep.setStyleSheet("color: #444;")
+        grid.addWidget(sep, r, 0, 1, 2)
+        r += 1
 
-        row3 = QHBoxLayout()
-        row3.addWidget(QLabel("Model:"))
+        # ---- Section: AI Model ----
+        hdr2 = QLabel("AI Model"); hdr2.setFont(bold)
+        grid.addWidget(hdr2, r, 0, 1, 2); r += 1
+
+        grid.addWidget(QLabel("Model:"), r, 0)
         self.model_combo = QComboBox()
         self.model_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        row3.addWidget(self.model_combo)
-        ai_layout.addLayout(row3)
+        grid.addWidget(self.model_combo, r, 1); r += 1
 
-        row4 = QHBoxLayout()
-        row4.addWidget(QLabel("Interval:"))
+        grid.addWidget(QLabel("Interval:"), r, 0)
+        ir = QHBoxLayout(); ir.setContentsMargins(0, 0, 0, 0)
         self.interval_edit = QLineEdit("1")
-        self.interval_edit.setFixedWidth(50)
         self.interval_edit.setAlignment(Qt.AlignRight)
-        row4.addWidget(self.interval_edit)
-        row4.addWidget(QLabel("sec"))
-        row4.addStretch()
-        ai_layout.addLayout(row4)
+        ir.addWidget(self.interval_edit)
+        ir.addWidget(QLabel("sec"))
+        grid.addLayout(ir, r, 1); r += 1
 
-        ai_layout.addWidget(QLabel("Prompt:"))
-        self.prompt_edit = QTextEdit()
-        self.prompt_edit.setPlaceholderText("Describe this image in one sentence.")
-        self.prompt_edit.setMaximumHeight(80)
-        self.prompt_edit.setTabChangesFocus(True)  # Ctrl+Tab exits
-        ai_layout.addWidget(self.prompt_edit)
-
-        row5 = QHBoxLayout()
-        row5.addWidget(QLabel("Max Tokens:"))
+        grid.addWidget(QLabel("Max Tokens:"), r, 0)
         self.tokens_edit = QLineEdit("512")
-        self.tokens_edit.setFixedWidth(60)
         self.tokens_edit.setAlignment(Qt.AlignRight)
-        row5.addWidget(self.tokens_edit)
-        row5.addStretch()
-        ai_layout.addLayout(row5)
+        grid.addWidget(self.tokens_edit, r, 1); r += 1
 
-        layout.addWidget(ai_group)
-        layout.addStretch()
+        grid.addWidget(QLabel("Prompt:"), r, 0); r += 1
+        self.prompt_edit = QTextEdit()
+        self.prompt_edit.setPlainText("Describe this image in one sentence.")
+        fm = self.prompt_edit.fontMetrics()
+        self.prompt_edit.setFixedHeight((fm.height() + 4) * 10)
+        self.prompt_edit.setTabChangesFocus(True)
+        grid.addWidget(self.prompt_edit, r, 0, 1, 2); r += 1
 
-        # ---- Action buttons ----
-        btn_row = QHBoxLayout()
-        self.start_btn = QPushButton("&START")
-        self.start_btn.setShortcut("Alt+S")
-        self.start_btn.setMinimumHeight(44)
-        self.quit_btn = QPushButton("&QUIT")
-        self.quit_btn.setShortcut("Alt+Q")
-        self.quit_btn.setMinimumHeight(44)
-        btn_row.addWidget(self.start_btn)
-        btn_row.addWidget(self.quit_btn)
-        layout.addLayout(btn_row)
+        grid.setRowMinimumHeight(r, 6); r += 1  # spacer
+
+        # Separator line
+        from PySide6.QtWidgets import QFrame
+        sep2 = QFrame()
+        sep2.setFrameShape(QFrame.HLine)
+        sep2.setFrameShadow(QFrame.Sunken)
+        sep2.setStyleSheet("color: #444;")
+        grid.addWidget(sep2, r, 0, 1, 2)
+        r += 1
+
+        # ---- Buttons ----
+        btn_layout = QHBoxLayout(); btn_layout.setContentsMargins(0, 0, 0, 0)
+        self.start_btn = QPushButton("START")
+        self.start_btn.setMinimumHeight(40)
+        self.start_btn.clicked.connect(self._on_start_stop)
+        self.quit_btn = QPushButton("QUIT")
+        self.quit_btn.setMinimumHeight(40)
+        self.quit_btn.clicked.connect(self.quit_clicked)
+        btn_layout.addWidget(self.start_btn)
+        btn_layout.addWidget(self.quit_btn)
+        grid.addLayout(btn_layout, r, 0, 1, 2); r += 1
+
+        # bottom filler
+        grid.setRowStretch(r, 1)
 
     def _connect_signals(self):
         self.camera_combo.currentIndexChanged.connect(self._on_camera_changed)
-        self.start_btn.clicked.connect(self._on_start_stop)
-        self.quit_btn.clicked.connect(self.quit_clicked)
         self.model_combo.currentTextChanged.connect(
             lambda t: self.model_changed.emit(t))
         self.interval_edit.textChanged.connect(self._on_interval_changed)
@@ -157,9 +176,9 @@ class ControlSidebar(QWidget):
     def set_streaming_state(self, streaming):
         self._streaming = streaming
         if streaming:
-            self.start_btn.setText("&STOP")
+            self.start_btn.setText("STOP")
         else:
-            self.start_btn.setText("&START")
+            self.start_btn.setText("START")
         self.camera_combo.setEnabled(not streaming)
         self.res_combo.setEnabled(not streaming)
 
@@ -188,7 +207,6 @@ class ControlSidebar(QWidget):
     # ----- public helpers -----
 
     def set_models(self, models):
-        """Populate model dropdown: models is list of (model_id, owned_by)."""
         current = self.model_combo.currentText()
         self.model_combo.blockSignals(True)
         self.model_combo.clear()
@@ -201,7 +219,6 @@ class ControlSidebar(QWidget):
         self.model_combo.blockSignals(False)
 
     def get_params(self):
-        """Return current settings as dict."""
         try:
             interval = int(self.interval_edit.text())
         except ValueError:

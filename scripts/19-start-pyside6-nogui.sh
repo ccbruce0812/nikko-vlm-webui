@@ -47,6 +47,13 @@ if [ ! -f "${VENV_DIR}/bin/activate" ]; then
     exit 1
 fi
 
+# ---- Already running? ----
+if pgrep -f 'python main_nogui.py' >/dev/null 2>&1; then
+    echo "[ERROR] Headless nogui is already running."
+    echo "        Stop it first: Ctrl-C or kill -2 \$(pgrep -f 'python main_nogui.py')"
+    exit 1
+fi
+
 # ---- Xorg (required by nvarguscamerasrc) ----
 if ! pgrep -x Xorg >/dev/null 2>&1; then
     echo "[ERROR] Xorg is not running."
@@ -64,7 +71,9 @@ sleep 2
 
 # ---- MAXN Super Mode (25W) ----
 echo "[INFO] Setting MAXN Super Mode (25W)..."
-sudo nvpmodel -m 2
+if ! sudo nvpmodel -q 2>/dev/null | grep -q "NV Power Mode: MAXN_SUPER"; then
+    sudo nvpmodel -m 2
+fi
 sudo jetson_clocks
 
 # ---- Memory tuning ----

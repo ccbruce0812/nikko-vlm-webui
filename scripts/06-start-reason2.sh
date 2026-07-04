@@ -5,16 +5,13 @@
 # ============================================================
 set -euo pipefail
 
-echo "=== Set MAXN Super Mode (25W) ==="
-sudo nvpmodel -m 2
-echo "→ MAXN mode 2 (Super Mode 25W)"
-
-echo ""
-echo "=== Lock max clocks (CPU + GPU + EMC) ==="
+echo "=== Set MAXN Super (25W) ==="
+if ! sudo nvpmodel -q 2>/dev/null | grep -q "NV Power Mode: MAXN_SUPER"; then
+    sudo nvpmodel -m 2
+fi
 sudo jetson_clocks
-echo "→ clocks locked"
 
-echo ""
+# ---- update
 echo "=== Tune NVMap / kernel params (increase CMA space) ==="
 echo "  vm.swappiness: 60 → 10"
 sudo sysctl -w vm.swappiness=10
