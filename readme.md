@@ -21,12 +21,15 @@ flowchart LR
     Router --> YOLO
 ```
 
-### 2. Router Dynamic Model Detection
-
-### 3. Kiosk GUI & Headless Tool
+### 2. Kiosk GUI & Headless Tool
 
 A PySide6 kiosk GUI and headless pipeline validation tool are provided in `pyside6-gui/`.
 See [pyside6-gui.md](pyside6-gui.md) for setup, UI design, and usage.
+
+### 3. RTSP Server
+
+CSI camera RTSP streaming via nvarguscamerasrc. See [rtsp-server.md](rtsp-server.md)
+for pipeline, configuration, and troubleshooting.
 
 ### 4. Hardware Requirements
 
@@ -39,243 +42,158 @@ See [pyside6-gui.md](pyside6-gui.md) for setup, UI design, and usage.
 
 ### 1. Prepare SD Card
 
-Download the [JetPack 6.2.1 Super SD Card Image](https://developer.nvidia.com/downloads/embedded/L4T/r36_Release_v4.4/jp62-r1-orin-nano-sd-card-image.zip) and flash to SD card using [balenaEtcher](https://github.com/balena-io/etcher/releases/download/v2.1.6/balenaEtcher-2.1.6.Setup.exe). Insert the card and boot.
+Download [JetPack 6.2.1 Super SD Card Image](https://developer.nvidia.com/downloads/embedded/L4T/r36_Release_v4.4/jp62-r1-orin-nano-sd-card-image.zip), flash with [balenaEtcher](https://github.com/balena-io/etcher/releases/download/v2.1.6/balenaEtcher-2.1.6.Setup.exe), insert, and boot.  Follow the on-screen setup.
 
-### 2. Complete Setup in Terminal
-- Update stock packages
+### 2. SSH + Passwordless sudo
+
+Generate an SSH key on your local machine and copy it to the Jetson:
 
 ```bash
+# Generate key (local machine)
+ssh-keygen -t ed25519 -C "you@example.com"
+
+# Copy to Jetson (enter password on first prompt)
+ssh-copy-id <user>@<jetson-ip>
+
+# Login to verify passwordless access
+ssh <user>@<jetson-ip>
+```
+
+On the Jetson, set up passwordless sudo so scripts don't prompt for passwords:
+
+```bash
+echo '<user> ALL=(ALL) NOPASSWD: ALL' | sudo tee /etc/sudoers.d/<user>
+sudo chmod 440 /etc/sudoers.d/<user>
+sudo visudo -c        # verify syntax
+
+# Back to local machine
+logout
+```
+
+### 3. Copy Project to Jetson
+
+```bash
+git clone git@github.com:ccbruce0812/nikko-vlm-webui.git
+scp -r nikko-vlm-webui <user>@<jetson-ip>:~/
+```
+
+All subsequent operations happen inside `nikko-vlm-webui/` on the Jetson.
+
+### 4. Update Stock Packages
+
+On the Jetson:
+
+```bash
+# Back to remote machine
+ssh <user>@<jetson-ip>
+
 sudo apt-get update
 sudo apt-get upgrade
 ```
 
-- Generate SSH key locally and copy to remote (passwordless login)
+### 5. Disable GUI
 
-Generate SSH Key
-
-```bash
-ssh-keygen -t ed25519 -C "your_email@example.com"
-```
-
-Press Enter to accept defaults:
-
-```text
-~/.ssh/id_ed25519
-~/.ssh/id_ed25519.pub
-```
-
-Copy public key to remote:
+Jetson boots into graphical desktop by default (~500MB RAM consumed).
+Switch to multi-user.target to free memory, but keep Xorg available for
+nvarguscamerasrc (Argus requires a running X server for full-speed capture).
 
 ```bash
-ssh-copy-id user@remote_host
-```
-
-Example:
-
-```bash
-ssh-copy-id john@192.168.1.100
-```
-
-Enter remote password on first connection.
-
-- Test passwordless login
-
-```bash
-ssh user@remote_host
-```
-
-Example:
-
-```bash
-ssh john@192.168.1.100
-```
-
-If `ssh-copy-id` not available, copy manually:
-
-```bash
-cat ~/.ssh/id_ed25519.pub | ssh user@remote_host "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
-```
-
-- Configure sudoers for passwordless sudo
-
-Edit sudoers:
-
-```bash
-sudo visudo
-```
-
-Add:
-
-```text
-username ALL=(ALL) NOPASSWD: ALL
-```
-
-Example:
-
-```text
-john ALL=(ALL) NOPASSWD: ALL
-```
-
-Test:
-
-```bash
-sudo -k
-sudo ls /root
-```
-
-Recommended: use `/etc/sudoers.d/`:
-
-```bash
-echo 'john ALL=(ALL) NOPASSWD: ALL' | sudo tee /etc/sudoers.d/john
-sudo chmod 440 /etc/sudoers.d/john
-```
-
-Verify:
-
-```bash
-sudo visudo -c
-```
-
-This approach is cleaner than editing `/etc/sudoers` directly.
-
-After this step, you can SSH into the system without password or sudo prompts.
-
-- Copy project to remote
-
-Assuming login as john to 192.168.0.100:
-
-```bash
-git clone git@github.com:ccbruce0812/nikko-vlm-webui.git
-scp -r nikko-vlm-webui john@192.168.0.100:~/
-```
-
-All subsequent operations happen inside `nikko-vlm-webui` on the remote.
-
-### 3. Disable GUI
-
-Jetson Orin Nano boots into graphical desktop by default (graphical.target), consuming ~500MB RAM.
-This platform is fully operated via WebUI; switching to text mode frees memory for containers.
-
-WiFi is managed by NetworkManager: its systemd unit already has `WantedBy=multi-user.target`,
-so WiFi auto-starts after switching targets — no extra config needed.
-
-```bash
-# Switch boot target to multi-user.target (disable GUI)
+# Switch boot target to text mode
 sudo systemctl set-default multi-user.target
 
-# Verify NetworkManager is enabled under multi-user.target
-sudo systemctl is-enabled NetworkManager
-# Should return "enabled". If disabled/masked/static, enable manually:
-sudo systemctl enable NetworkManager
+# Allow Xorg to start under multi-user.target
+sudo systemctl edit --full --force xorg.service << 'EOF'
+[Unit]
+Description=Xorg display server
+After=multi-user.target
 
-# Ensure WiFi auto-connect is configured
-nmcli dev wifi list                          # list available WiFi
-sudo nmcli dev wifi connect "SSID" password "YOUR_PASSWORD"
-# NetworkManager saves the connection; auto-reconnects on boot
+[Service]
+ExecStart=/usr/bin/Xorg :0 -nolisten tcp -noreset
+Restart=no
 
-# Reboot to verify
-sudo reboot
-# After boot, confirm: WiFi connected (ping external), docker available, RAM freed
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl enable xorg.service
 ```
 
-> 📄 Script: `scripts/01-disable-gui.sh` (run: `bash scripts/01-disable-gui.sh`)
+After reboot, Xorg runs under multi-user.target. Set `DISPLAY=:0` before
+using any GPU-accelerated GStreamer pipeline.
 
-> **Verification checklist** (after reboot):
+Verify that Xorg is working correctly:
+
+```bash
+# After reboot, check Xorg is running
+pgrep Xorg && echo "Xorg OK"
+
+# Optional: verify X11 rendering with xclock
+export DISPLAY=:0
+xclock &
+```
+
+> 📄 Script: `scripts/01-disable-gui.sh` (excludes manual verification above)
+
+> **After completing System Configuration (step 6), test the CSI camera FPS:**
 > ```bash
-> systemctl get-default             # → multi-user.target
-> nmcli -t -f ACTIVE,SSID dev wifi  # → should show yes:YOUR_SSID
-> free -h                           # → available should be ~400-500MB higher
+> export DISPLAY=:0
+> sudo systemctl restart nvargus-daemon
+> timeout 5 gst-launch-1.0 -v nvarguscamerasrc sensor-id=0 \
+>     ! 'video/x-raw(memory:NVMM),width=1280,height=720,format=NV12,framerate=60/1' \
+>     ! nvvidconv ! fpsdisplaysink video-sink=fakesink
+> # Should show ~59 fps. Without DISPLAY, Argus caps at ~3 fps.
+>
+> timeout 5 gst-launch-1.0 -v nvarguscamerasrc sensor-id=0 \
+>     ! 'video/x-raw(memory:NVMM),width=1920,height=1080,format=NV12,framerate=30/1' \
+>     ! nvvidconv ! fpsdisplaysink video-sink=fakesink
+> # Should show ~29 fps.
 > ```
 
-### 4. System Configuration
+### 6. System Configuration
 
-Jetson Orin Nano GPU uses CMA (Contiguous Memory Allocator) to dynamically allocate from system RAM.
-
-**CSI Camera**: CAM0 with IMX219, configured via `jetson-io.py` for device tree overlay.
-After setup, `/dev/video0` appears for rtsp-server to capture via nvarguscamerasrc.
-
-**Super Mode**: Standard MAXN is only 15W. After flashing JetPack 6.1+ SD card image, delete
-`/etc/nvpmodel.conf` and reboot. The system regenerates a config with **25W MAXN** —
-NVIDIA's official "Super Mode" (1.7x AI performance boost).
-
-Steps in order: CSI camera setup → Check/Enable Super Mode → MAXN (25W) → Lock clocks → Tune NVMap/kernel → Compact memory
-Goal: **maximize GPU-available contiguous memory**.
+CSI camera (CAM0 / IMX219), Super Mode 25W, CMA tuning for maximizing GPU-available memory.
 
 ```bash
 # Check current status
-echo "=== Current nvpmodel mode ==="
 sudo nvpmodel -q
-echo ""
-echo "=== CSI camera status ==="
-ls -la /dev/video* 2>/dev/null || echo "  No /dev/video* detected"
-echo ""
-echo "=== Current CMA / GPU available memory ==="
+ls -la /dev/video* 2>/dev/null
 cat /proc/meminfo | grep -E "^Cma|^MemAvailable"
-free -h
 
-# Configure CSI camera (IMX219)
-# If /dev/video0 missing, use jetson-io.py to set device tree overlay
-if [ ! -e /dev/video0 ]; then
-  echo "⚠ /dev/video0 not found"
-  echo "→ sudo /opt/nvidia/jetson-io/jetson-io.py"
-  echo "  Select Configure for compatible camera → IMX219 Dual / IMX219-A / IMX219-C → Save and reboot"
-fi
+# CSI camera — if /dev/video0 missing, configure via jetson-io.py
+# sudo /opt/nvidia/jetson-io/jetson-io.py → IMX219 → CAM0 → Save & reboot
 
-# Check Super Mode (25W) support
-# If nvpmodel -q doesn't show 25W or MAXN Super, delete old config and reboot
-sudo nvpmodel -q | grep -q "25W\|MAXN Super" || {
-  echo "⚠ Currently only supports standard 15W MAXN"
-  echo "→ sudo rm -rf /etc/nvpmodel.conf && sudo reboot"
-  echo "  (Requires JetPack 6.1+ SD card image flashed; config regenerates after reboot)"
+# Super Mode 25W — if not shown, delete old conf and reboot
+sudo nvpmodel -q | grep -q "25W" || {
+  sudo rm -rf /etc/nvpmodel.conf && sudo reboot
 }
 
-# Set MAXN Super Mode (25W)
+# MAXN Super + lock clocks
 sudo nvpmodel -m 2
-echo "→ MAXN mode 2 (Super Mode 25W)"
-
-# Lock max clocks (CPU + GPU + EMC)
 sudo jetson_clocks
-echo "→ clocks locked"
 
-# Tune NVMap / kernel params (increase CMA allocatable space)
-# Lower swap tendency: prevent GPU data from being swapped to eMMC
+# Kernel tuning
 sudo sysctl -w vm.swappiness=10
-# Higher cache reclaim pressure: free dentry/inode cache for CMA
 sudo sysctl -w vm.vfs_cache_pressure=200
-# Higher vm.min_free_kbytes: reserve more contiguous free pages for CMA
 sudo sysctl -w vm.min_free_kbytes=65536
-# Set NVMap external pool size: limit GPU userspace memory pool
-# (Not available on Orin Nano, failure is expected)
-sudo sh -c 'echo 1024 > /sys/kernel/debug/tegra_nvmap/ext_pool_size' 2>/dev/null || true
 
-# Compact memory (maximize CMA contiguous blocks)
+# Compact memory (maximize CMA)
 sudo sync
 sudo sysctl -w vm.drop_caches=3
 sudo sysctl -w vm.compact_memory=1
 
 # Verify
-echo ""
-echo "=== CMA / GPU available memory after tuning ==="
 cat /proc/meminfo | grep -E "^Cma|^MemAvailable"
 free -h
-echo ""
-echo "nvpmodel mode: $(sudo nvpmodel -q | grep 'NV Power Mode')"
 ```
 
 > 📄 Script: `scripts/02-system-config.sh` (run: `bash scripts/02-system-config.sh`)
 
-### 5. Install Basic Packages
+### 7. Install Basic Packages
 
 ```bash
-# Docker should be pre-installed (JetPack 6.x)
-# Verify nvidia-container-runtime
-sudo docker info | grep Runtime
-
-# Install python3-venv (required by model download script)
 sudo apt-get install -y python3-venv v4l-utils libxcb-cursor0 python3-pip
 ```
 
-> 📄 Script: `scripts/03-install-deps.sh` (run: `bash scripts/03-install-deps.sh`)
+> 📄 Script: `scripts/03-install-deps.sh`
 
 ## Model Download
 
@@ -380,16 +298,18 @@ sudo docker build -t rtsp-server rtsp-server/
 
 > 📄 Script: `scripts/05-build-all.sh` (run: `bash scripts/05-build-all.sh`)
 
-### 2. Image ↔ Container Mapping
+## Container Description
 
-| Image | Container | Port | Purpose |
-|-------|-----------|------|---------|
-| `router` | `router` | 8080 | API gateway, dynamic model detection |
-| `moondream2` | `moondream2` | 8001 | moondream2 GGUF inference |
-| `reason2` | `reason2` | 8002 | Reason2 GGUF inference |
-| `yolo` | `yolo` | 8003 | YOLO TensorRT object detection |
-| `live-vlm-webui` | `live-vlm-webui` | 8090 | Web frontend, WebRTC camera |
-| `rtsp-server` | `rtsp-server` | 8554 | CSI camera RTSP stream (IMX219) |
+All containers on `vlm-net` bridged network.  Router and RTSP server also expose ports to host. Access via `localhost`, `127.0.0.1`, or Jetson LAN IP (e.g. `192.168.1.119`).
+
+| Image | Container | Port | Accessible via | Purpose | API / Protocol |
+|-------|-----------|------|---------------|---------|----------------|
+| `router` | `router` | 8080 | host + vlm-net | API gateway, dynamic model detection | `GET http://<host>:8080/v1/models`<br>`POST http://<host>:8080/v1/chat/completions` |
+| `moondream2` | `moondream2` | 8001 | vlm-net only | moondream2 GGUF inference (llama-server) | `POST http://<host>:8001/v1/chat/completions` — image + text → text |
+| `reason2` | `reason2` | 8002 | vlm-net only | Reason2 GGUF inference (llama-server) | `POST http://<host>:8002/v1/chat/completions` — image + text → text |
+| `yolo` | `yolo` | 8003 | vlm-net only | YOLOv8n PyTorch object detection | `POST http://<host>:8003/v1/chat/completions` — image → JSON `[{name, confidence, bbox}]` |
+| `live-vlm-webui` | `live-vlm-webui` | 8090 | host (--network host) | Web frontend, WebRTC + RTSP relay | Browser `http://<host>:8090` → WebRTC (ICE/DTLS/SCTP/SRTP) |
+| `rtsp-server` | `rtsp-server` | 8554 | host (--network host) | CSI camera RTSP stream (IMX219, nvarguscamerasrc → H.264) | `rtsp://<host>:8554/stream` — H.264 over RTP/UDP |
 
 ## Start Services
 
@@ -416,7 +336,7 @@ Three stacks, start/stop from their respective directories:
 > 📄 Start: `scripts/06-start-reason2.sh` / `08-start-moondream2.sh` / `10-start-yolo.sh`
 > 📄 Stop: `scripts/07-stop-reason2.sh` / `09-stop-moondream2.sh` / `11-stop-yolo.sh`
 
-### 2. Manual docker run (Recommended — Interactive Script)
+### 2. Manual docker run
 
 **Do NOT run multiple models simultaneously** (shared CMA memory; Orin Nano has only 7.4GB RAM).
 The script prompts you to pick one model and optionally start RTSP Server.
@@ -580,7 +500,7 @@ for model in ['reason2', 'moondream2', 'yolo']:
 "
 ```
 
-> 📄 Script: `scripts/16-test-quick.sh` (run: `bash scripts/16-test-quick.sh`)
+> 📄 Script: `scripts/14-test-quick.sh` (run: `bash scripts/14-test-quick.sh`)
 
 ## Performance Data
 
@@ -617,7 +537,7 @@ sleep 35
 sudo docker start yolo
 ```
 
-> 📄 Script: `scripts/17-troubleshoot-reason2-oom.sh`
+> 📄 Script: `scripts/15-troubleshoot-reason2-oom.sh`
 
 ### 1.1 Tuning Model Parameters (OOM or Performance)
 
@@ -686,7 +606,7 @@ sudo docker run -d --name moondream2 --runtime nvidia \
 sudo docker system prune -af
 ```
 
-> 📄 Script: `scripts/18-cleanup-disk.sh` (run: `bash scripts/18-cleanup-disk.sh`)
+> 📄 Script: `scripts/16-cleanup-disk.sh` (run: `bash scripts/16-cleanup-disk.sh`)
 
 ## File Structure
 
@@ -722,7 +642,7 @@ sudo docker system prune -af
 │   └── yolo/
 ├── test/
 ├── scripts/
-│   ├── 01-disable-gui.sh               # disable GUI + WiFi auto-login
+│   ├── 01-disable-gui.sh               # disable GUI + enable Xorg via xorg.service
 │   ├── 02-system-config.sh             # CSI camera + Super Mode 25W + NVMap + memory tuning
 │   ├── 03-install-deps.sh              # install basic packages
 │   ├── 04-download-models.sh           # download all models
@@ -735,14 +655,14 @@ sudo docker system prune -af
 │   ├── 11-stop-yolo.sh                 # stop YOLO
 │   ├── 12-start-manual.sh              # interactive container launcher
 │   ├── 13-stop-manual.sh               # stop all manually started containers
-│   ├── 14-start-rtsp-server.sh         # start RTSP Server (CSI camera, optional)
-│   ├── 15-stop-rtsp-server.sh          # stop RTSP Server
-│   ├── 16-test-quick.sh                # quick model validation
-│   ├── 17-troubleshoot-reason2-oom.sh  # Reason2 OOM fix
-│   ├── 18-cleanup-disk.sh              # Docker disk cleanup
-│   ├── 19-install-pyside6-gui.sh       # pyside6-gui venv + packages
-│   ├── 20-start-pyside6-gui.sh         # launch kiosk GUI
-│   └── 21-start-pyside6-nogui.sh       # launch headless validation
+│   ├── 14-test-quick.sh                # quick model validation
+│   ├── 15-troubleshoot-reason2-oom.sh  # Reason2 OOM fix
+│   ├── 16-cleanup-disk.sh              # Docker disk cleanup
+│   ├── 17-install-pyside6-gui.sh       # pyside6-gui venv + packages
+│   ├── 18-start-pyside6-gui.sh         # launch kiosk GUI
+│   ├── 19-start-pyside6-nogui.sh       # launch headless validation
+│   ├── 20-start-rtsp-server.sh         # start RTSP Server (CSI camera, optional)
+│   └── 21-stop-rtsp-server.sh          # stop RTSP Server
 ├── pyside6-gui/
 │   ├── main.py                         # GUI entry point
 │   ├── main_nogui.py                   # headless entry point
@@ -762,6 +682,7 @@ sudo docker system prune -af
 │           └── system_monitor.py
 ├── readme.md
 ├── pyside6-gui.md
+├── rtsp-server.md
 ├── log.md
 └── porting.md
 ```
