@@ -128,6 +128,12 @@ class HeadlessRunner:
         self._fps_t0 = 0.0
         self._fps_res = f"{w}x{h}"
 
+        # Timing accumulators (milliseconds)
+        self._prepare_ms = 0.0
+        self._reason_ms = 0.0
+        self._overlay_ms = 0.0
+        self._infer_count = 0
+
         # System monitor (no jetson-stats; uses /proc + /sys)
         self._monitor_stats = {"gpu": 0, "cpu": 0, "ram": 0, "vram": 0}
         self._prev_cpu_snap = None
@@ -331,7 +337,9 @@ class HeadlessRunner:
         if fn is None:
             self._pending = False
             return
+        t0 = time.time()
         payload = fn(frame, self.args.prompt, self.args.max_tokens)
+        self._prepare_ms += (time.time() - t0) * 1000
 
         size_kb = len(payload) * 3 // 4 // 1024
         logger.info("POST /v1/chat/completions → %s (%d KB)", model, size_kb)
@@ -340,6 +348,7 @@ class HeadlessRunner:
         t.start()
 
     def _do_inference(self, payload):
+        t0 = time.time()
         try:
             req = urllib.request.Request(
                 f"{ROUTER_URL}/v1/chat/completions",
@@ -350,13 +359,16 @@ class HeadlessRunner:
                 data = json.loads(resp.read())
                 content = data["choices"][0]["message"]["content"]
                 print(f"{self.args.model}: {content}", flush=True)
+            self._reason_ms += (time.time() - t0) * 1000
             self._apply_overlay(content)
+            self._infer_count += 1
         except Exception as e:
             logger.error("Inference error: %s", e)
         finally:
             self._pending = False
 
     def _apply_overlay(self, response_text: str):
+        t0 = time.time()
         frame = self._get_qimage()
         if frame is None:
             return
@@ -364,6 +376,7 @@ class HeadlessRunner:
         if fn:
             fn(frame, response_text)
             self._output_count += 1
+        self._overlay_ms += (time.time() - t0) * 1000
 
     # -----------------------------------------------------------------
     #  empty-run overlay (keeps output pipeline exercised)
@@ -391,8 +404,28 @@ class HeadlessRunner:
             return
         in_fps = self._input_count / elapsed
         out_fps = self._output_count / elapsed
-        logger.info("FPS — input: %5.1f | output: %5.1f | target: %s | %s",
-                    in_fps, out_fps, self._actual_fps, self._fps_res)
+
+        # Average timing per inference (ms)
+        n = self._infer_count or 1
+        prep_avg = self._prepare_ms / n
+        reason_avg = self._reason_ms / n
+        overlay_avg = self._overlay_ms / n
+        total_avg = prep_avg + reason_avg + overlay_avg
+
+        gpu = self._monitor_stats.get("gpu", 0)
+        cpu = self._monitor_stats.get("cpu", 0)
+        ram = self._monitor_stats.get("ram", 0)
+        vram = self._monitor_stats.get("vram", 0)
+
+        logger.info(
+            "FPS — input: %5.1f | output: %5.1f | target: %s | %s",
+            in_fps, out_fps, self._actual_fps, self._fps_res)
+        logger.info(
+            "Time — prepare:%6.0fms | reason:%6.0fms | overlay:%5.0fms | total:%6.0fms",
+            prep_avg, reason_avg, overlay_avg, total_avg)
+        logger.info(
+            "GPU:%5.1f%% | VRAM:%4.1fG | CPU:%5.1f%% | RAM:%4.1fG",
+            gpu, vram, cpu, ram)
 
 
 def main():

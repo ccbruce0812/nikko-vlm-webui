@@ -44,6 +44,20 @@ echo "[INFO] Restarting nvargus-daemon..."
 sudo systemctl restart nvargus-daemon
 sleep 2
 
+# ---- MAXN Super Mode (25W) ----
+echo "[INFO] Setting MAXN Super Mode (25W)..."
+sudo nvpmodel -m 2
+sudo jetson_clocks
+
+# ---- Memory tuning ----
+echo "[INFO] Memory tuning (CMA optimization)..."
+sudo sysctl -w vm.swappiness=10
+sudo sysctl -w vm.vfs_cache_pressure=200
+sudo sysctl -w vm.min_free_kbytes=65536
+sudo sync
+sudo sysctl -w vm.drop_caches=3
+sudo sysctl -w vm.compact_memory=1
+
 # ---- Launch ----
 source "${VENV_DIR}/bin/activate"
 cd "${GUI_DIR}"
