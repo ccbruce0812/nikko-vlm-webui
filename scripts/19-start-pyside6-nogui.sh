@@ -1,13 +1,13 @@
 #!/bin/bash
 # ============================================================
-# 21-start-pyside6-nogui.sh
+# 19-start-pyside6-nogui.sh
 # Starts Xorg (if needed), nvargus-daemon, then headless mode.
 # Cleans up Xorg on exit only if it was started by this script.
 #
 # Usage:
-#   bash scripts/21-start-pyside6-nogui.sh [args...]
+#   bash scripts/19-start-pyside6-nogui.sh [args...]
 #
-#   bash scripts/21-start-pyside6-nogui.sh \
+#   bash scripts/19-start-pyside6-nogui.sh \
 #       --camera-id 0 --resolution 1280x720@60 \
 #       --model yolo --interval 5 --max-tokens 200
 # ============================================================
@@ -20,7 +20,7 @@ GUI_DIR="${PROJECT_DIR}/pyside6-gui"
 
 # ---- help ----
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-    echo "Usage: bash scripts/21-start-pyside6-nogui.sh [OPTIONS]"
+    echo "Usage: bash scripts/19-start-pyside6-nogui.sh [OPTIONS]"
     echo ""
     echo "  Headless validation mode — GStreamer + Router API, no window."
     echo "  Handles Xorg lifecycle, nvargus-daemon, DISPLAY automatically."
@@ -35,36 +35,24 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     echo "  --help, -h          show this message"
     echo ""
     echo "Examples:"
-    echo "  bash scripts/21-start-pyside6-nogui.sh"
-    echo "  bash scripts/21-start-pyside6-nogui.sh --camera-id 0 --resolution 1280x720@60"
-    echo "  bash scripts/21-start-pyside6-nogui.sh -h"
+    echo "  bash scripts/19-start-pyside6-nogui.sh"
+    echo "  bash scripts/19-start-pyside6-nogui.sh --camera-id 0 --resolution 1280x720@60"
+    echo "  bash scripts/19-start-pyside6-nogui.sh -h"
     exit 0
 fi
 
 if [ ! -f "${VENV_DIR}/bin/activate" ]; then
     echo "[ERROR] venv not found at ${VENV_DIR}"
-    echo "        Run: bash scripts/19-install-pyside6-gui.sh"
+    echo "        Run: bash scripts/17-install-pyside6-gui.sh"
     exit 1
 fi
 
-# ---- Xorg life-cycle ----
-XORG_STARTED_BY_US=false
-cleanup_xorg() {
-    if [ "$XORG_STARTED_BY_US" = true ]; then
-        echo "[INFO] Stopping Xorg (started by this script)..."
-        sudo pkill Xorg 2>/dev/null || true
-        sleep 1
-    fi
-    echo "[INFO] Unset DISPLAY"
-    unset DISPLAY
-}
-trap cleanup_xorg EXIT
-
+# ---- Xorg (required by nvarguscamerasrc) ----
 if ! pgrep -x Xorg >/dev/null 2>&1; then
-    echo "[INFO] Starting Xorg :0 ..."
-    sudo Xorg :0 -nolisten tcp -noreset &
-    XORG_STARTED_BY_US=true
-    sleep 2
+    echo "[ERROR] Xorg is not running."
+    echo "        Run: sudo systemctl start xorg"
+    echo "        Or:  bash scripts/01-disable-gui.sh (one-time setup)"
+    exit 1
 fi
 
 export DISPLAY=:0

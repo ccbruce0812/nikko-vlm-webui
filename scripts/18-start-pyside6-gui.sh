@@ -1,11 +1,11 @@
 #!/bin/bash
 # ============================================================
-# 20-start-pyside6-gui.sh
+# 18-start-pyside6-gui.sh
 # Starts Xorg (if needed), nvargus-daemon, then launches GUI.
 # Cleans up Xorg on exit only if it was started by this script.
 #
 # Usage:
-#   bash scripts/20-start-pyside6-gui.sh
+#   bash scripts/18-start-pyside6-gui.sh
 # ============================================================
 set -euo pipefail
 
@@ -16,37 +16,25 @@ GUI_DIR="${PROJECT_DIR}/pyside6-gui"
 
 # ---- help ----
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-    echo "Usage: bash scripts/20-start-pyside6-gui.sh"
+    echo "Usage: bash scripts/18-start-pyside6-gui.sh"
     echo ""
     echo "  Launch the kiosk GUI."
-    echo "  Handles Xorg lifecycle, nvargus-daemon, DISPLAY automatically."
+    echo "  Requires Xorg (xorg.service) and nvargus-daemon."
     exit 0
 fi
 
 if [ ! -f "${VENV_DIR}/bin/activate" ]; then
     echo "[ERROR] venv not found at ${VENV_DIR}"
-    echo "        Run: bash scripts/19-install-pyside6-gui.sh"
+    echo "        Run: bash scripts/17-install-pyside6-gui.sh"
     exit 1
 fi
 
-# ---- Xorg life-cycle ----
-XORG_STARTED_BY_US=false
-cleanup_xorg() {
-    if [ "$XORG_STARTED_BY_US" = true ]; then
-        echo "[INFO] Stopping Xorg (started by this script)..."
-        sudo pkill Xorg 2>/dev/null || true
-        sleep 1
-    fi
-    echo "[INFO] Unset DISPLAY"
-    unset DISPLAY
-}
-trap cleanup_xorg EXIT
-
+# ---- Xorg (required by nvarguscamerasrc) ----
 if ! pgrep -x Xorg >/dev/null 2>&1; then
-    echo "[INFO] Starting Xorg :0 ..."
-    sudo Xorg :0 -nolisten tcp -noreset &
-    XORG_STARTED_BY_US=true
-    sleep 2
+    echo "[ERROR] Xorg is not running."
+    echo "        Run: sudo systemctl start xorg"
+    echo "        Or:  bash scripts/01-disable-gui.sh (one-time setup)"
+    exit 1
 fi
 
 export DISPLAY=:0
