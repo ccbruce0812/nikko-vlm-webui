@@ -564,22 +564,7 @@ for model in ['reason2', 'moondream2', 'yolo']:
 
 ## Troubleshooting
 
-### 1. reason2 fails to start: CUDA out of memory
-
-- **When**: manually starting reason2 and yolo (or moondream2) simultaneously, not via docker-compose
-- **Cause**: two models competing for GPU CMA memory; reason2 mmproj needs ~1.1GB
-- **Fix**: stop other models, start reason2, then restore
-
-```bash
-sudo docker stop yolo
-sudo docker start reason2
-sleep 35
-sudo docker start yolo
-```
-
-> 📄 Script: `scripts/15-troubleshoot-reason2-oom.sh`
-
-### 1.1 Tuning Model Parameters (OOM or Performance)
+### 1. Tuning Model Parameters (OOM or Performance)
 
 All model parameters are pre-configured in Dockerfiles with Jetson Orin Nano optimized defaults. No changes normally needed.
 To override, pass `-e` environment variables:
@@ -602,51 +587,59 @@ sudo docker run -d --name moondream2 --runtime nvidia \
 | moondream2 | `N_GPU_LAYERS` `N_THREADS` `N_BATCH` `CTX_SIZE` `FLASH_ATTN` | 15 / 4 / 128 / 1024 / on |
 | yolo | (no llama-server params) | — |
 
-### 2. llama-server: libllama-server-impl.so not found
+### 2. Freeing Disk Space and Memory
 
-- **When**: only the `llama-server` binary was copied, not its dependent .so files
-- **Cause**: llama-server dynamically links libllama-server-impl.so, libllama.so, etc.
-- **Fix**: Dockerfile copies entire `build/bin/` directory and sets `LD_LIBRARY_PATH`
+Jetson Orin Nano (8GB) has limited storage and unified memory. When space runs low,
+Docker images, cached models, venvs, and CMA fragmentation all contribute.
 
-### 3. --flash-attn: unknown value
-
-- **When**: using latest llama.cpp with bare `--flash-attn`
-- **Cause**: newer llama.cpp requires explicit value `on|off|auto`
-- **Fix**: use `--flash-attn on`
-
-### 4. moondream2 returns blank
-
-- **When**: calling moondream2 via OpenAI API format
-- **Cause**: moondream2 is phi2 architecture; standard chat template is incompatible
-- **Fix**: add custom `--chat-template`:
-
-```
---chat-template "{% for message in messages %}{% if message['role'] == 'user' %}<image>\n\nQuestion: {% for part in message['content'] %}{% if part['type'] == 'text' %}{{ part['text'] }}{% endif %}{% endfor %}\n\nAnswer: {% else %}{{ message['content'] }}{% endif %}{% endfor %}"
-```
-
-### 5. WebUI GPU monitor always shows 0%
-
-- **When**: using official live-vlm-webui image on Jetson
-- **Cause**: Jetson uses shared memory; jtop returns GPU=0 in Docker containers
-- **Fix**: built into `live-vlm-webui/Dockerfile` (patch_gpu_monitor.py)
-
-### 6. WebUI camera not working
-
-- **When**: WebUI using bridge network mode
-- **Cause**: WebRTC needs direct UDP connection; Docker bridge NAT blocks it
-- **Fix**: use `--network host` (already built into docker-compose.yml)
-
-### 7. Disk space full
-
-- **When**: too many Docker images accumulated
-- **Cause**: base images + build cache consuming space
-- **Fix**:
+**Clear accumulated artifacts:**
 
 ```bash
-sudo docker system prune -af
+# Docker: remove unused images, containers, volumes, build cache
+sudo docker system prune -af --volumes
+
+# Models: re-download if needed (scripts/04-download-models.sh)
+# rm -rf models/reason2 models/moondream2 models/yolo
+
+# Python venv: rebuild if packages are stale
+# rm -rf pyside6-gui-venv
+# 17-start-pyside6-nogui.sh
 ```
 
-> 📄 Script: `scripts/16-cleanup-disk.sh` (run: `bash scripts/16-cleanup-disk.sh`)
+**Release and compact memory:**
+
+```bash
+# Drop caches and compact — frees reclaimable slab/dentry/inode memory
+sudo sync
+echo 3 | sudo tee /proc/sys/vm/drop_caches
+echo 1 | sudo tee /proc/sys/vm/compact_memory
+
+# Check CMA allocation (Orin Nano uses CMA for GPU/ISP buffers)
+cat /proc/meminfo | grep -i cma
+
+# Verify swap is off (flash wear; Orin Nano should not swap)
+sudo swapoff -a
+```
+
+**Large contiguous space (CMA):**
+
+Docker + nvarguscamerasrc both allocate from CMA. If a model container fails to start
+with "CUDA out of memory" or the camera pipeline reports "alloc failed", the CMA region
+may be fragmented. Reboot is the most reliable fix:
+
+```bash
+sudo reboot
+```
+
+Alternatively, stop all containers and the camera pipeline, drop caches, then restart:
+
+```bash
+sudo docker stop $(sudo docker ps -q) 2>/dev/null
+sudo systemctl stop nvargus-daemon
+sudo sync && echo 3 | sudo tee /proc/sys/vm/drop_caches
+echo 1 | sudo tee /proc/sys/vm/compact_memory
+sudo systemctl start nvargus-daemon
+```
 
 ## File Structure
 
@@ -696,13 +689,11 @@ sudo docker system prune -af
 │   ├── 12-start-manual.sh              # interactive container launcher
 │   ├── 13-stop-manual.sh               # stop all manually started containers
 │   ├── 14-test-quick.sh                # quick model validation
-│   ├── 15-troubleshoot-reason2-oom.sh  # Reason2 OOM fix
-│   ├── 16-cleanup-disk.sh              # Docker disk cleanup
-│   ├── 17-install-pyside6-gui.sh       # pyside6-gui venv + packages
-│   ├── 18-start-pyside6-gui.sh         # launch kiosk GUI
-│   ├── 19-start-pyside6-nogui.sh       # launch headless validation
-│   ├── 20-start-rtsp-server.sh         # start RTSP Server (CSI camera, optional)
-│   └── 21-stop-rtsp-server.sh          # stop RTSP Server
+│   ├── 15-install-pyside6-gui.sh       # pyside6-gui venv + packages
+│   ├── 16-start-pyside6-gui.sh         # launch kiosk GUI
+│   ├── 17-start-pyside6-nogui.sh       # launch headless validation
+│   ├── 18-start-rtsp-server.sh         # start RTSP Server (CSI camera, optional)
+│   └── 19-stop-rtsp-server.sh          # stop RTSP Server
 ├── pyside6-gui/
 │   ├── main.py                         # GUI entry point
 │   ├── main_nogui.py                   # headless entry point

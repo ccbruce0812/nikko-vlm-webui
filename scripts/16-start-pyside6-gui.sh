@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# 18-start-pyside6-gui.sh
+# 17-start-pyside6-gui.sh
 # Starts Xorg (if needed), nvargus-daemon, then launches GUI.
 # Cleans up Xorg on exit only if it was started by this script.
 #
@@ -25,7 +25,7 @@ fi
 
 if [ ! -f "${VENV_DIR}/bin/activate" ]; then
     echo "[ERROR] venv not found at ${VENV_DIR}"
-    echo "        Run: bash scripts/17-install-pyside6-gui.sh"
+    echo "        Run: bash scripts/16-install-pyside6-gui.sh"
     exit 1
 fi
 

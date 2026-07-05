@@ -1,11 +1,11 @@
 #!/bin/bash
 # ============================================================
-# 17-install-pyside6-gui.sh
+# 16-install-pyside6-gui.sh
 # Create Python venv and install PySide6 + aiohttp for the
 # kiosk VLM GUI and headless validation tool.
 #
 # Usage:
-#   bash scripts/17-install-pyside6-gui.sh
+#   bash scripts/16-install-pyside6-gui.sh
 # ============================================================
 set -euo pipefail
 

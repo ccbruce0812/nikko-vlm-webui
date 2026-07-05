@@ -5,7 +5,7 @@
 set -euo pipefail
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-    echo "Usage: bash scripts/21-stop-rtsp-server.sh"
+    echo "Usage: bash scripts/20-stop-rtsp-server.sh"
     echo ""
     echo "  Stop and remove the RTSP server Docker container."
     exit 0

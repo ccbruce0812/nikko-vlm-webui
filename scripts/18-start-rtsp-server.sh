@@ -111,7 +111,7 @@ echo "=== Removing old container ==="
 if sudo docker ps -a --format '{{.Names}}' | grep -q rtsp-server; then
     STATUS=$(sudo docker inspect -f '{{.State.Status}}' rtsp-server 2>/dev/null || echo "unknown")
     if [ "$STATUS" = "running" ]; then
-        echo "✗ rtsp-server is already running. Stop it first: bash scripts/21-stop-rtsp-server.sh"
+        echo "✗ rtsp-server is already running. Stop it first: bash scripts/20-stop-rtsp-server.sh"
         exit 1
     fi
     sudo docker rm -f rtsp-server 2>/dev/null || true

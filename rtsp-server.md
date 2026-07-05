@@ -29,16 +29,6 @@ nvarguscamerasrc camera-id=0
 | Mux | `h264parse` | H.264 stream formatting |
 | Payload | `rtph264pay` | RTP packetization for RTSP delivery |
 
-## Performance
-
-Measured on Jetson Orin Nano with IMX219:
-
-| Resolution | Target FPS | Measured FPS | Notes |
-|-----------|-----|-------------|-------|
-| 1280×720 | 30 | ~28 | x264 ultrafast, negligible overhead |
-
-> `DISPLAY=:0` + Xorg required for full-speed capture. Without it, Argus caps at ~3 fps.
-
 ## Requirements
 
 - Xorg running (`xorg.service`, see [readme.md §5](readme.md))
@@ -52,13 +42,13 @@ Measured on Jetson Orin Nano with IMX219:
 | Action | Script |
 |--------|--------|
 | Start | `bash scripts/20-start-rtsp-server.sh [OPTIONS]` |
-| Stop | `bash scripts/21-stop-rtsp-server.sh` |
+| Stop | `bash scripts/20-stop-rtsp-server.sh` |
 
 Both scripts check that Xorg is running before proceeding, set `DISPLAY=:0`,
 and restart `nvargus-daemon`.  The stop script only removes the Docker container
 — Xorg remains managed by systemd (`xorg.service`).
 
-### CLI Options (20-start)
+### 1. CLI Options (19-start)
 
 ```
   --camera-id N        CSI camera sensor (default: 0)
@@ -74,7 +64,7 @@ Example:
 bash scripts/20-start-rtsp-server.sh --resolution 1920x1080@30 --port 8555
 ```
 
-### Manual docker run
+### 2. Manual docker run
 
 ```bash
 sudo docker run -d \
@@ -88,7 +78,7 @@ sudo docker run -d \
     rtsp-server
 ```
 
-### Environment variables
+### 3. Environment variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -116,7 +106,7 @@ gst-launch-1.0 rtspsrc location=rtsp://localhost:8554/stream latency=0 \
 
 ## Troubleshooting
 
-### RTSP stream shows ~3 fps instead of 30
+### 1. RTSP stream shows ~3 fps instead of 30
 
 Xorg is not running. Verify:
 
@@ -126,7 +116,7 @@ echo $DISPLAY                  # should be :0
 sudo systemctl restart nvargus-daemon
 ```
 
-### Connection refused from live-vlm-webui
+### 2. Connection refused from live-vlm-webui
 
 `live-vlm-webui` uses `--network host` and connects to `localhost:8554`.
 Ensure RTSP server is started **before** live-vlm-webui.  If WebUI was started

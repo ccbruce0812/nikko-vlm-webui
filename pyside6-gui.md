@@ -72,8 +72,8 @@ CSI Camera → GStreamer (nvarguscamerasrc + NVMM zero-copy) → appsink
 | Step | Script |
 |------|--------|
 | System packages | `bash scripts/03-install-deps.sh` |
-| Python venv + PySide6 | `bash scripts/17-install-pyside6-gui.sh` |
-| Launch GUI | `bash scripts/18-start-pyside6-gui.sh` |
+| Python venv + PySide6 | `bash scripts/15-install-pyside6-gui.sh` |
+| Launch GUI | `bash scripts/16-start-pyside6-gui.sh` |
 | Launch headless | `bash scripts/19-start-pyside6-nogui.sh [args...]` |
 
 > Both launch scripts handle Xorg lifecycle automatically:
@@ -360,7 +360,7 @@ sequenceDiagram
 
 A terminal-only variant (`main_nogui.py`) reuses the same GStreamer pipeline and router modules without opening a PySide6 window. Useful for validating the camera pipeline and model Docker containers before running the full GUI.
 
-> 📄 Launch: `scripts/19-start-pyside6-nogui.sh`
+# 17-start-pyside6-nogui.sh
 
 ### 1. Design
 
@@ -399,7 +399,7 @@ starting the pipeline.
 
 ```bash
 # Via script (recommended — handles Xorg, DISPLAY, nvargus-daemon)
-bash scripts/19-start-pyside6-nogui.sh \
+bash scripts/15-install-pyside6-gui.sh
     --camera-id 0 --resolution 1280x720@60 \
     --model reason2 --interval 10 --max-tokens 100
 
