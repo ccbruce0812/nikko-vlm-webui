@@ -296,9 +296,8 @@ cd ../..
 
 ### 4. YOLO (TensorRT)
 
-Requires `.pt` model file. TensorRT engine is generated inside the Docker container
-at first inference (the correct JetPack PyTorch is only available inside the container,
-not in the download venv).
+Download the `.pt` model first, then optionally export to TensorRT for faster inference.
+The server auto-detects: TensorRT engine if available, otherwise falls back to PyTorch.
 
 ```bash
 mkdir -p models/yolo
@@ -313,6 +312,19 @@ print('Downloaded yolov8n.pt')
 
 cd ../..
 ```
+
+**Export to TensorRT (optional, 3–5 min):**
+
+```bash
+# After docker build, run once to generate .engine file:
+sudo docker run --rm --runtime nvidia \
+    -v "$(pwd)/models/yolo:/model" \
+    -e EXPORT_ENGINE=1 yolo
+```
+
+The server picks TensorRT automatically on next start if `.engine` exists.
+
+> 📄 Script: `scripts/04-download-models.sh` (downloads all models)
 
 ### 5. Clean up venv
 
@@ -364,7 +376,7 @@ All containers on `vlm-net` bridged network.  Router and RTSP server also expose
 | `router` | `router` | 8080 | host + vlm-net | API gateway, dynamic model detection | `GET http://<host>:8080/v1/models`<br>`POST http://<host>:8080/v1/chat/completions` |
 | `moondream2` | `moondream2` | 8001 | vlm-net only | moondream2 GGUF inference (llama-server) | `POST http://<host>:8001/v1/chat/completions` — image + text → text |
 | `reason2` | `reason2` | 8002 | vlm-net only | Reason2 GGUF inference (llama-server) | `POST http://<host>:8002/v1/chat/completions` — image + text → text |
-| `yolo` | `yolo` | 8003 | vlm-net only | YOLOv8n PyTorch object detection | `POST http://<host>:8003/v1/chat/completions` — image → JSON `[{name, confidence, bbox}]` |
+| `yolo` | `yolo` | 8003 | vlm-net only | YOLOv8n object detection (TensorRT auto, PyTorch fallback) | `POST http://<host>:8003/v1/chat/completions` — image → JSON `[{name, confidence, bbox}]` |
 | `live-vlm-webui` | `live-vlm-webui` | 8090 | host (--network host) | Web frontend, WebRTC + RTSP relay | Browser `http://<host>:8090` → WebRTC (ICE/DTLS/SCTP/SRTP). See [live-vlm-webui.md](live-vlm-webui.md). |
 | `rtsp-server` | `rtsp-server` | 8554 | host (--network host) | CSI camera RTSP stream (IMX219, nvarguscamerasrc → H.264) | `rtsp://<host>:8554/stream` — H.264 over RTP/UDP |
 
