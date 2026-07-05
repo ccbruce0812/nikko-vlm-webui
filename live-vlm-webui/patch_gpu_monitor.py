@@ -14,8 +14,8 @@ new1 = '''gpu_percent = (
                 )
                 if gpu_percent == 0:
                     try:
-                        import glob
-                        for p in glob.glob("/sys/devices/platform/*/*.gpu/load") or glob.glob("/sys/devices/platform/*/gpu/load"):
+                        import glob, os
+                        for p in (["/sys/devices/platform/gpu.0/load"] if os.path.exists("/sys/devices/platform/gpu.0/load") else []) + (glob.glob("/sys/devices/platform/*/*.gpu/load") or glob.glob("/sys/devices/platform/*/gpu/load")):
                             with open(p) as f: gpu_percent = int(f.read().strip()) / 10.0
                             break
                     except: pass'''

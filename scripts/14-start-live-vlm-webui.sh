@@ -64,6 +64,7 @@ sudo docker run -d \
     --network host \
     --runtime nvidia \
     --privileged \
+    -v /sys:/sys:ro \
     -e PORT="$PORT" \
     live-vlm-webui \
     --host 0.0.0.0 --port "$PORT" \
