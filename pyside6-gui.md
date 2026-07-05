@@ -2,6 +2,7 @@
 
 > This document covers the PySide6 kiosk GUI and headless validation tool.
 > For Docker backend, model setup, and system configuration see [readme.md](readme.md).
+> For the browser-based WebUI alternative, see [live-vlm-webui.md](live-vlm-webui.md).
 
 ## Overview
 

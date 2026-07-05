@@ -320,7 +320,7 @@ sudo docker pull dustynv/l4t-pytorch:r36.4.0
 # Router (API gateway, dynamic model detection, ~168MB)
 sudo docker build -t router router/
 
-# WebUI (official live-vlm-webui + GPU fix + API defaults, ~1.5GB)
+# WebUI (browser frontend, ~1.5GB) — see live-vlm-webui.md
 sudo docker build -t live-vlm-webui live-vlm-webui/
 
 # Reason2 (llama-server pre-built binaries, ~2GB)
@@ -348,7 +348,7 @@ All containers on `vlm-net` bridged network.  Router and RTSP server also expose
 | `moondream2` | `moondream2` | 8001 | vlm-net only | moondream2 GGUF inference (llama-server) | `POST http://<host>:8001/v1/chat/completions` — image + text → text |
 | `reason2` | `reason2` | 8002 | vlm-net only | Reason2 GGUF inference (llama-server) | `POST http://<host>:8002/v1/chat/completions` — image + text → text |
 | `yolo` | `yolo` | 8003 | vlm-net only | YOLOv8n PyTorch object detection | `POST http://<host>:8003/v1/chat/completions` — image → JSON `[{name, confidence, bbox}]` |
-| `live-vlm-webui` | `live-vlm-webui` | 8090 | host (--network host) | Web frontend, WebRTC + RTSP relay | Browser `http://<host>:8090` → WebRTC (ICE/DTLS/SCTP/SRTP) |
+| `live-vlm-webui` | `live-vlm-webui` | 8090 | host (--network host) | Web frontend, WebRTC + RTSP relay | Browser `http://<host>:8090` → WebRTC (ICE/DTLS/SCTP/SRTP). See [live-vlm-webui.md](live-vlm-webui.md). |
 | `rtsp-server` | `rtsp-server` | 8554 | host (--network host) | CSI camera RTSP stream (IMX219, nvarguscamerasrc → H.264) | `rtsp://<host>:8554/stream` — H.264 over RTP/UDP |
 
 ## Start Services
@@ -412,9 +412,9 @@ sudo docker run -d --name moondream2 --runtime nvidia --network vlm-net \
 sudo docker run -d --name yolo --runtime nvidia --network vlm-net \
     -v "$(pwd)/models/yolo:/model:ro" yolo
 
-# WebUI (required, host network)
+# WebUI (required, host network) — see live-vlm-webui.md
 sudo docker run -d --name live-vlm-webui --network host --runtime nvidia --privileged \
-    -v /sys:/sys:ro -v /run/jtop.sock:/run/jtop.sock:ro live-vlm-webui
+    --device=/dev/video0 live-vlm-webui
 
 # RTSP Server (optional, CSI camera streaming)
 sudo docker run -d --name rtsp-server --runtime nvidia --network host \
@@ -714,6 +714,7 @@ sudo systemctl start nvargus-daemon
 ├── readme.md
 ├── pyside6-gui.md
 ├── rtsp-server.md
+├── live-vlm-webui.md
 ├── log.md
 └── porting.md
 ```
