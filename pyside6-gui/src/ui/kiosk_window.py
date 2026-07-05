@@ -299,7 +299,6 @@ class KioskWindow(QMainWindow):
             self._yolo_response = response_text
         else:
             self._display.set_overlay_text(response_text)
-        self._display.repaint()
         self._overlay_ms += (time.time() - t0) * 1000
 
         params = self._sidebar.get_params()
