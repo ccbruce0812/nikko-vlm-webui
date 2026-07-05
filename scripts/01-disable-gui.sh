@@ -69,17 +69,26 @@ cat > ~/.config/openbox/rc.xml << 'RCEOF'
 RCEOF
 echo "→ openbox RC configured (undecorated kiosk window)"
 
-# xterm auto-scale launcher (font follows screen height)
-mkdir -p ~/.config/openbox
-cat > ~/.config/openbox/autostart << 'AUTOSTART'
-#!/bin/bash
-# Auto-scale xterm font: fs = screen_height / 30
-H=$(xrandr 2>/dev/null | grep '*' | head -1 | awk '{print $1}' | cut -d'x' -f2)
-FS=$(( ${H:-1080} / 30 ))
-xterm -fullscreen -fa 'Monospace' -fs "$FS" -bg black -fg white &
-AUTOSTART
-chmod +x ~/.config/openbox/autostart
-echo "→ openbox autostart: xterm with fs=$(( ( $(xrandr 2>/dev/null | grep '*' | head -1 | awk '{print $1}' | cut -d'x' -f2; echo 1080) / 30 ))) (auto-scale)"
+# xterm service (starts after openbox)
+sudo tee /etc/systemd/system/xterm.service > /dev/null << EOF
+[Unit]
+Description=Xterm fullscreen terminal
+After=openbox.service
+Requires=openbox.service
+
+[Service]
+Type=simple
+Environment=DISPLAY=:0
+ExecStart=/bin/sh -c 'sleep 2; H=\$(xrandr 2>/dev/null | grep \"*\" | head -1 | awk \"{print \\\$1}\" | cut -dx -f2); test -z \"\$H\" && H=1080; exec xterm -fullscreen -fa Monospace -fs \$((H/60)) -bg black -fg white'
+Restart=no
+User=${USER}
+
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl daemon-reload
+sudo systemctl enable xterm.service
+echo "→ xterm.service enabled (auto-scale font)"
 
 echo ""
 echo "=== Done ==="
