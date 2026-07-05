@@ -124,7 +124,6 @@ class HeadlessRunner:
 
         # FPS counters
         self._input_count = 0
-        self._output_count = 0
         self._fps_t0 = 0.0
         self._fps_res = f"{w}x{h}"
 
@@ -317,7 +316,6 @@ class HeadlessRunner:
         frame = self._get_qimage()
         if frame is not None:
             _draw_monitor_overlay(frame, self._monitor_stats, self._fps_res)
-            self._output_count += 1
 
     # -----------------------------------------------------------------
     #  inference tick — delegates payload to overlay module
@@ -358,7 +356,6 @@ class HeadlessRunner:
             with urllib.request.urlopen(req, timeout=120) as resp:
                 data = json.loads(resp.read())
                 content = data["choices"][0]["message"]["content"]
-                print(f"{self.args.model}: {content}", flush=True)
             self._reason_ms += (time.time() - t0) * 1000
             self._apply_overlay(content)
             self._infer_count += 1
@@ -375,7 +372,6 @@ class HeadlessRunner:
         fn = DRAW.get(self.args.model)
         if fn:
             fn(frame, response_text)
-            self._output_count += 1
         self._overlay_ms += (time.time() - t0) * 1000
 
     # -----------------------------------------------------------------
@@ -390,7 +386,6 @@ class HeadlessRunner:
         fn = DRAW.get(self.args.model)
         if fn:
             fn(frame, "")
-            self._output_count += 1
 
     # -----------------------------------------------------------------
     #  FPS report
@@ -403,7 +398,6 @@ class HeadlessRunner:
         if elapsed <= 0:
             return
         in_fps = self._input_count / elapsed
-        out_fps = self._output_count / elapsed
 
         # Average timing per inference (ms)
         n = self._infer_count or 1
@@ -418,14 +412,9 @@ class HeadlessRunner:
         vram = self._monitor_stats.get("vram", 0)
 
         logger.info(
-            "FPS — input: %5.1f | output: %5.1f | target: %s | %s",
-            in_fps, out_fps, self._actual_fps, self._fps_res)
-        logger.info(
-            "Time — prepare:%6.0fms | reason:%6.0fms | overlay:%5.0fms | total:%6.0fms",
-            prep_avg, reason_avg, overlay_avg, total_avg)
-        logger.info(
-            "GPU:%5.1f%% | VRAM:%4.1fG | CPU:%5.1f%% | RAM:%4.1fG",
-            gpu, vram, cpu, ram)
+            "in:%.1f | reason:%.0fms overlay:%.0fms | "
+            "GPU:%.0f%% CPU:%.0f%% RAM:%.1fG VRAM:%.1fG",
+            in_fps, reason_avg, overlay_avg, gpu, cpu, ram, vram)
 
 
 def main():

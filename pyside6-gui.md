@@ -57,7 +57,7 @@ CSI Camera → GStreamer (nvarguscamerasrc + NVMM zero-copy) → appsink
 | **AI inference** | Router API (docker containers), async HTTP |
 | **UI layout** | Single kiosk window, left sidebar + right video |
 | **Overlay drawing** | QPainter on QWidget (no cv2) |
-| **System monitor** | /proc + /sys overlay (GPU/VRAM/CPU/RAM) top-right |
+| **System monitor** | /proc + /sys (GPU/CPU/RAM/VRAM) top-right OSD |
 | **Camera source** | CSI only: `nvarguscamerasrc` with NVMM zero-copy |
 
 ### 3. Hardware Requirements
@@ -110,9 +110,9 @@ in `pyside6-gui/`.
 ┌─ Left Sidebar (1/6) ──────┬─ Video Display (5/6) ────────────────────┐
 │                           │                                          │
 │  Video Source             │    ┌──────────────────────────────────┐  │
-│  Camera ID:  [0 ▼]        │    │                       1280x720@30│  │
-│  Res/FPS:    [1920x1080]  │    │                 GPU:45% VRAM:2.1G│  │
-│                           │    │                  CPU:62% RAM:3.8G│  │
+│  Camera ID:  [0 ▼]        │    │   in:29.0 | reason:0ms overlay:0ms│  │
+│  Res/FPS:    [1920x1080]  │    │   GPU:45% CPU:62% RAM:3.8G VRAM:…│  │
+│                           │    │                                  │  │
 │                           │    │                                  │  │
 │  AI Model                 │    │                                  │  │
 │  Model:      [reason2 ▼]  │    │                                  │  │
@@ -188,10 +188,9 @@ Measured on Jetson Orin Nano with IMX219 (DISPLAY=:0 required for full speed):
 
 | Resolution | Target FPS | Measured FPS | Render Cost | Status |
 |-----------|-----|-------------|-------------|--------|
-| 1280×720 | 60 | ~59 (steady) | ~2ms | ✓ verified 15min stable |
+| 1280×720 | 60 | ~58 (steady) | ~2ms | ✓ verified 15min stable |
 | 1920×1080 | 30 | ~29 (steady) | ~5ms | ✓ verified 15min stable |
-| 3280×2464 | 21 | — | ~8ms (est.) | untested |
-| 3840×2160 | 30 | — | ~10ms (est.) | not supported by IMX219 |
+| 3280×2464 | 21 | ~18 (steady) | ~8ms | ✓ verified with reason2 (~5s/inf) & yolo (~150ms/inf) |
 
 **Critical:** Without `DISPLAY=:0` and a running Xorg server, Argus falls back to a slow
 capture path (~3 fps regardless of mode). Both `20-` and `21-` start scripts handle this
@@ -208,28 +207,53 @@ automatically. When running `main_nogui.py` directly, you must export `DISPLAY=:
 
 ### 2. Overlay Behavior
 
-YOLO and VLM inference results are drawn on top of the live video via QPainter (no OpenCV dependency):
+Inference results are drawn on the video via overlay modules (`yolo_overlay.py`, `reason2_overlay.py`,
+`moondream2_overlay.py`). All three modules expose the same interface:
 
-| Model | Visual Overlay |
-|-------|---------------|
-| **YOLO** | Colored bounding boxes with class label and confidence score (e.g., `person 0.87`) |
-| **moondream2** | Semi-transparent black bar at image bottom with the prompt text as caption |
-| **reason2** | Semi-transparent black bar at image bottom with the prompt text as caption |
-
-### 3. System Monitor Overlay
-
-Top-right corner of the video display, updated every 5 seconds via /proc and /sys:
-
-```
-1280x720@30  GPU:45% VRAM:2.1G
-             CPU:62% RAM:3.8G
+```python
+prepare_payload(frame: QImage, prompt: str, max_tokens: int) -> str
+draw_overlay(qimage: QImage, response_text: str) -> QImage
 ```
 
-- **Resolution/FPS**: current input stream (e.g., `1920x1080@30`)
-- **GPU**: GPU utilization percentage
-- **VRAM**: GPU memory used (GiB)
-- **CPU**: CPU utilization percentage
-- **RAM**: System RAM used (GiB)
+The main program dispatches via dict without model-specific branching.
+
+| Model | Visual Overlay | Caption Bar |
+|-------|---------------|-------------|
+| **YOLO** | Colored bounding boxes with class label and confidence (e.g., `person 0.87`). Boxes persist across frames for tracking effect. Bbox coordinates are scaled from inference resolution (≤1280px) back to display resolution. | No caption (response is JSON, not human-readable text) |
+| **moondream2** | Response text drawn as semi-transparent black bar at image bottom | Yes |
+| **reason2** | Response text drawn as semi-transparent black bar at image bottom | Yes |
+
+YOLO bounding boxes are drawn on **every frame** (not just on inference result), using the last
+successful detection JSON. This provides a tracking-like effect — boxes stay visible until the
+next inference updates them. Switching away from YOLO clears persisted boxes.
+
+YOLO handles "No objects detected." responses gracefully (no overlay drawn, no warning logged).
+
+### 3. System Monitor OSD & Console Log
+
+Both GUI (OSD top-right) and headless (console) use the same format, updated every 5 seconds:
+
+```
+in:58.0 | reason:4800ms overlay:5ms | GPU:45% CPU:50% RAM:4.1G VRAM:4.1G
+```
+
+| Field | Source | Description |
+|---|---|---|
+| `in` | frame counter / elapsed | Average input FPS from camera |
+| `reason` | cumulative / count | Average inference wall-clock time (POST → full response) |
+| `overlay` | cumulative / count | Average overlay drawing time (GUI: measured via synchronous `repaint()`) |
+| `GPU` | `/sys/devices/platform/gpu.0/load` | GPU utilization % (instantaneous sample) |
+| `CPU` | `/proc/stat` delta | CPU utilization % |
+| `RAM` | `/proc/meminfo` | System RAM used (GiB) |
+| `VRAM` | = RAM | Unified memory on Jetson Orin Nano |
+
+No jetson-stats dependency — pure `/proc` + `/sys` only.
+
+Inference result text is **not** printed to the console/log (only the stats line). POST events
+are logged separately on their own line.
+
+All counters (`_input_count`, `_reason_ms`, `_overlay_ms`, `_infer_count`) reset to zero on each
+**Start** to provide clean per-session averages.
 
 ## Router Integration
 
@@ -330,7 +354,7 @@ sequenceDiagram
 - The GStreamer pipeline emits frames continuously; the UI never blocks waiting for inference.
 - At each interval tick, the latest frame is captured and sent to the Router asynchronously via `aiohttp` in a background `QThread`.
 - When the response arrives, the overlay module draws on the **current live frame** (not the original captured frame) — the display always shows up-to-date video.
-- If a new interval tick fires before the previous response arrives, the pending response is dropped (drop-stale).
+- If a new interval tick fires before the previous response arrives, the tick is skipped (`_pending` guard) — no queue build-up.
 
 ## Headless Validation Mode
 
@@ -398,13 +422,13 @@ Parameter validation failed:
 Sample console output:
 
 ```
-[16:04:01] Streaming 1920x1080@30 — interval 1s, model reason2
-[16:04:02] POST /v1/chat/completions → reason2 (175842 bytes)
-[16:04:14] reason2: "A blue bus parked on a city street with buildings in the background."
-[16:04:15] POST /v1/chat/completions → reason2 (175842 bytes)
-[16:04:26] reason2: "A city street scene with a blue bus and several pedestrians."
+17:58:17 [nogui] Streaming 3280x2464@21 — interval 1s, model reason2
+17:58:19 [nogui] POST /v1/chat/completions → reason2 (554 KB)
+17:58:27 [nogui] in:16.3 | reason:7624ms overlay:57ms | GPU:0% CPU:71% RAM:4.2G VRAM:4.2G
+17:58:32 [nogui] in:17.7 | reason:7624ms overlay:57ms | GPU:1% CPU:52% RAM:4.3G VRAM:4.3G
+17:58:37 [nogui] in:17.5 | reason:7624ms overlay:57ms | GPU:0% CPU:77% RAM:4.3G VRAM:4.3G
 ^C
-[16:04:30] Shutting down — pipeline stopped, client closed.
+17:58:40 [nogui] Shutting down.
 ```
 
 ## Troubleshooting

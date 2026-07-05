@@ -4,6 +4,7 @@ Orchestrates video_source, router_client, overlay modules, and system monitor.
 """
 import base64
 import logging
+import time
 
 from PySide6.QtWidgets import QMainWindow, QHBoxLayout, QWidget, QPushButton, QSizePolicy
 from PySide6.QtCore import QTimer, Slot, QThread, QBuffer, Qt
@@ -27,7 +28,7 @@ DRAW = {
     "moondream2": moondream2_overlay.draw_overlay,
 }
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("gui")
 
 
 class KioskWindow(QMainWindow):
@@ -55,6 +56,18 @@ class KioskWindow(QMainWindow):
         self._params = {}
         self._latest_frame = None
         self._pending_inference = False
+
+        # FPS & timing (like nogui)
+        self._input_count = 0
+        self._fps_t0 = time.time()
+        self._prepare_ms = 0.0
+        self._reason_ms = 0.0
+        self._overlay_ms = 0.0
+        self._infer_count = 0
+        self._infer_start = 0.0
+        self._payload_kb = 0
+        self._last_overlay = ""
+        self._yolo_response = None
 
         # UI
         self._sidebar = ControlSidebar()
@@ -101,12 +114,26 @@ class KioskWindow(QMainWindow):
     @Slot(int, int, int)
     def _on_start(self, camera_id, width, height):
         params = self._sidebar.get_params()
+        params["width"] = width
+        params["height"] = height
+        res_text = self._sidebar.res_combo.currentText()
+        _, _, fps = VideoSource.parse_resolution(res_text)
+        params["fps"] = fps
         self._params = params
+
+        # Reset all counters
+        self._input_count = 0
+        self._fps_t0 = time.time()
+        self._prepare_ms = 0.0
+        self._reason_ms = 0.0
+        self._overlay_ms = 0.0
+        self._infer_count = 0
+        self._yolo_response = None
 
         self._video_source = VideoSource(camera_id, width, height)
         self._video_source.frame_ready.connect(self._on_frame)
         self._video_source.status_message.connect(
-            lambda msg: logger.info("Video: %s", msg))
+            lambda msg: logger.info(msg))
         self._video_source.start()
 
         self._display.set_res_fps(f"{width}x{height}")
@@ -114,6 +141,9 @@ class KioskWindow(QMainWindow):
 
         interval_ms = max(1, params["interval"]) * 1000
         self._interval_timer.start(interval_ms)
+
+        logger.info("Streaming %dx%d@%d — interval %ds, model %s",
+                     width, height, fps, params["interval"], params["model"])
 
     @Slot()
     def _on_stop(self):
@@ -139,13 +169,33 @@ class KioskWindow(QMainWindow):
     @Slot()
     def _on_monitor_tick(self):
         snap = read_stats()
-        cpu = compute_cpu_pct(self._prev_cpu_snap, snap)
+        cpu_pct = compute_cpu_pct(self._prev_cpu_snap, snap)
         self._prev_cpu_snap = snap
+
+        elapsed = time.time() - self._fps_t0
+        in_fps = self._input_count / max(0.1, elapsed)
+
+        n = max(1, self._infer_count)
+        reas = self._reason_ms / n
+        over = self._overlay_ms / n
+
+        gpu = snap.get("gpu", 0)
+        vram = snap.get("vram", 0)
+        ram = snap.get("ram", 0)
+
+        logger.info(
+            "in:%.1f | reason:%.0fms overlay:%.0fms | "
+            "GPU:%.0f%% CPU:%.0f%% RAM:%.1fG VRAM:%.1fG",
+            in_fps, reas, over, gpu, cpu_pct, ram, vram)
+
         self._display.set_stats({
-            "gpu": snap.get("gpu", 0),
-            "cpu": cpu,
-            "ram": snap.get("ram", 0),
-            "vram": snap.get("vram", 0),
+            "fps": in_fps,
+            "gpu": gpu,
+            "cpu": cpu_pct,
+            "ram": ram,
+            "vram": vram,
+            "reason": reas,
+            "overlay": over,
         })
 
     # ----- frame pipeline -----
@@ -154,6 +204,16 @@ class KioskWindow(QMainWindow):
     def _on_frame(self, data, w, h):
         qimage = QImage(data, w, h, w * 4, QImage.Format_RGBA8888)
         self._latest_frame = qimage
+        self._input_count += 1
+
+        # Draw YOLO boxes on every frame for tracking effect
+        if self._yolo_response:
+            fn = DRAW.get("yolo")
+            if fn:
+                annotated = fn(qimage.copy(), self._yolo_response)
+                self._display.set_frame(annotated)
+                return
+
         self._display.set_frame(qimage)
 
     # ----- interval tick -----
@@ -170,11 +230,19 @@ class KioskWindow(QMainWindow):
         if not model:
             return
 
+        if model != "yolo":
+            self._yolo_response = None
+
         fn = PREPARE.get(model)
         if fn is None:
             return
+        t0 = time.time()
         payload = fn(self._latest_frame, params["prompt"], params["max_tokens"])
+        self._prepare_ms += (time.time() - t0) * 1000
+        self._payload_kb = len(payload) / 1024
 
+        logger.info("POST /v1/chat/completions → %s (%.0f KB)", model, self._payload_kb)
+        self._infer_start = time.time()
         self._pending_inference = True
         self._router.send_raw_payload(payload)
 
@@ -183,7 +251,26 @@ class KioskWindow(QMainWindow):
     @Slot(str, str)
     def _on_inference_result(self, model, response_text):
         self._pending_inference = False
-        self._display.set_overlay_text(response_text)
+        t_now = time.time()
+        self._reason_ms += (t_now - self._infer_start) * 1000
+        self._infer_count += 1
+        self._last_overlay = response_text
+
+        t0 = time.time()
+        fn = DRAW.get(model)
+        if fn:
+            frame = self._latest_frame
+            if frame and not frame.isNull():
+                annotated = fn(frame.copy(), response_text)
+                self._display.set_frame(annotated)
+
+        if model != "yolo":
+            self._display.set_overlay_text(response_text)
+        else:
+            self._display.set_overlay_text("")
+            self._yolo_response = response_text
+        self._display.repaint()
+        self._overlay_ms += (time.time() - t0) * 1000
 
         params = self._sidebar.get_params()
         interval_ms = max(1, params["interval"]) * 1000
@@ -215,4 +302,5 @@ class KioskWindow(QMainWindow):
         if self._video_source:
             self._video_source.stop()
         self._router.stop()
+        logger.info("Shutting down.")
         event.accept()

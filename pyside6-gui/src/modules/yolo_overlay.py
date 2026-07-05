@@ -30,10 +30,14 @@ def draw_overlay(qimage: QImage, response_text: str) -> QImage:
     """Parse YOLO JSON and draw bounding boxes. Returns annotated QImage."""
     result = qimage.copy()
 
+    text = response_text.strip()
+    if not text or text.lower() in ("no objects detected.", "no objects detected"):
+        return result
+
     try:
-        detections = json.loads(response_text)
+        detections = json.loads(text)
     except (json.JSONDecodeError, TypeError):
-        logger.warning("YOLO response is not valid JSON: %s", response_text[:100])
+        logger.warning("YOLO response is not valid JSON: %s", text[:100])
         return result
 
     if not detections:
@@ -44,11 +48,18 @@ def draw_overlay(qimage: QImage, response_text: str) -> QImage:
     font.setBold(True)
     painter.setFont(font)
 
+    # Scale bbox from inference resolution back to display resolution
+    max_dim = max(qimage.width(), qimage.height())
+    if max_dim > INFER_MAX_DIM:
+        scale = max_dim / INFER_MAX_DIM
+    else:
+        scale = 1.0
+
     for det in detections:
         name = det.get("name", det.get("class", "?"))
         conf = det.get("confidence", 0)
         bbox = det.get("bbox", [0, 0, 0, 0])
-        x1, y1, x2, y2 = [int(v) for v in bbox]
+        x1, y1, x2, y2 = [int(v * scale) for v in bbox]
 
         color = CLASS_COLORS.get(name, FALLBACK_COLOR)
         pen = QPen(color, max(2, qimage.width() // 400))

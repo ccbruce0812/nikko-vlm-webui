@@ -109,19 +109,23 @@ class VideoDisplay(QWidget):
         if self._img_rect is None:
             return
         r = self._img_rect
+        fps = self._stats.get("fps", 0)
+        reason = self._stats.get("reason", 0)
+        overlay = self._stats.get("overlay", 0)
         gpu = self._stats.get("gpu", 0)
         cpu = self._stats.get("cpu", 0)
         ram = self._stats.get("ram", 0)
+        vram = self._stats.get("vram", 0)
 
-        # Single line: "1920x1080@30 GPU:45% CPU:62% RAM:3.8G"
-        text = f"{self._res_fps}  GPU:{gpu:.0f}%  CPU:{cpu:.0f}%  RAM:{ram:.1f}G"
+        text = (f"in:{fps:.1f} | reason:{reason:.0f}ms overlay:{overlay:.0f}ms | "
+                f"GPU:{gpu:.0f}% CPU:{cpu:.0f}% RAM:{ram:.1f}G VRAM:{vram:.1f}G")
 
         painter.setFont(self.font())
         fm = painter.fontMetrics()
-        bar_w = fm.horizontalAdvance(text) + 12  # auto-fit text
+        bar_w = fm.horizontalAdvance(text) + 12
         bar_h = fm.height() + 4
-        gap_x = int(r.width() * 0.02)             # 2% from right
-        gap_y = int(r.height() * 0.02)            # 2% from top
+        gap_x = int(r.width() * 0.02)
+        gap_y = int(r.height() * 0.02)
 
         bx = r.x() + r.width() - bar_w - gap_x
         by = r.y() + gap_y
