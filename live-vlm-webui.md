@@ -72,15 +72,26 @@ Pre-configured environment variables point to the local Router:
 
 ## Start / Stop
 
-The WebUI is auto-started by docker-compose stacks and the manual launcher script.
-No dedicated start/stop script — use Docker commands directly.
+| Action | Script |
+|--------|--------|
+| Start | `bash scripts/20-start-live-vlm-webui.sh [OPTIONS]` |
+| Stop | `bash scripts/21-stop-live-vlm-webui.sh` |
 
-| Action | Command |
-|--------|---------|
-| Start (manual) | `sudo docker run -d --name live-vlm-webui --network host --runtime nvidia --privileged -v /sys:/sys:ro live-vlm-webui` |
-| Start (compose) | Included in `reason2/moondream2/yolo/docker-compose.yml` |
-| Stop | `sudo docker stop live-vlm-webui` |
-| Restart | `sudo docker restart live-vlm-webui` |
+The start script checks that no existing instance is running, removes any stale
+container, then launches with the specified port (default 8090).
+
+### CLI Options (20-start)
+
+```
+  --port N             WebUI listening port (default: 8090)
+  --help, -h           show usage
+```
+
+Example:
+
+```bash
+bash scripts/20-start-live-vlm-webui.sh --port 8091
+```
 
 ### Manual docker run
 

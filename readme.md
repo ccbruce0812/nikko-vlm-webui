@@ -355,7 +355,8 @@ All containers on `vlm-net` bridged network.  Router and RTSP server also expose
 
 ### 1. docker-compose
 
-Three stacks, start/stop from their respective directories:
+Three stacks, start/stop from their respective directories (model + router only;
+WebUI is started separately via `scripts/20-start-live-vlm-webui.sh`):
 
 ```bash
 # Run from nikko-vlm-webui root
@@ -694,6 +695,8 @@ sudo systemctl start nvargus-daemon
 │   ├── 17-start-pyside6-nogui.sh       # launch headless validation
 │   ├── 18-start-rtsp-server.sh         # start RTSP Server (CSI camera, optional)
 │   └── 19-stop-rtsp-server.sh          # stop RTSP Server
+│   ├── 20-start-live-vlm-webui.sh      # start browser WebUI
+│   └── 21-stop-live-vlm-webui.sh       # stop browser WebUI
 ├── pyside6-gui/
 │   ├── main.py                         # GUI entry point
 │   ├── main_nogui.py                   # headless entry point
