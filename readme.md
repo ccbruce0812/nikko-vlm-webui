@@ -104,11 +104,11 @@ sudo apt install -y openbox
 # Switch boot target to text mode
 sudo systemctl set-default multi-user.target
 
-# Allow Xorg to start under multi-user.target
-sudo systemctl edit --full --force xorg.service << 'EOF'
+# Create xorg.service (Xorg under multi-user.target)
+sudo tee /etc/systemd/system/xorg.service > /dev/null << 'EOF'
 [Unit]
 Description=Xorg display server
-After=multi-user.target
+Before=openbox.service
 
 [Service]
 ExecStart=/usr/bin/Xorg :0 -nolisten tcp -noreset
@@ -117,10 +117,47 @@ Restart=no
 [Install]
 WantedBy=multi-user.target
 EOF
+sudo systemctl daemon-reload
 sudo systemctl enable xorg.service
+
+# Create openbox.service (window manager)
+sudo tee /etc/systemd/system/openbox.service > /dev/null << EOF
+[Unit]
+Description=Openbox window manager
+After=xorg.service
+Requires=xorg.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/openbox
+Environment=DISPLAY=:0
+User=${USER}
+Restart=no
+
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl daemon-reload
+sudo systemctl enable openbox.service
+
+# Openbox RC: undecorated kiosk window
+mkdir -p ~/.config/openbox
+cat > ~/.config/openbox/rc.xml << 'RCEOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<openbox_config>
+  <keyboard>
+    <chainQuitKey>C-g</chainQuitKey>
+  </keyboard>
+  <applications>
+    <application name="Kiosk VLM GUI" class="main.py">
+      <decor>no</decor>
+    </application>
+  </applications>
+</openbox_config>
+RCEOF
 ```
 
-After reboot, Xorg runs under multi-user.target. Set `DISPLAY=:0` before
+After reboot, Xorg and openbox run under multi-user.target. Set `DISPLAY=:0` before
 using any GPU-accelerated GStreamer pipeline.
 
 Verify that Xorg is working correctly:
