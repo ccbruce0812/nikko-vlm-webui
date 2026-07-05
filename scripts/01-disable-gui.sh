@@ -69,6 +69,18 @@ cat > ~/.config/openbox/rc.xml << 'RCEOF'
 RCEOF
 echo "→ openbox RC configured (undecorated kiosk window)"
 
+# xterm auto-scale launcher (font follows screen height)
+mkdir -p ~/.config/openbox
+cat > ~/.config/openbox/autostart << 'AUTOSTART'
+#!/bin/bash
+# Auto-scale xterm font: fs = screen_height / 30
+H=$(xrandr 2>/dev/null | grep '*' | head -1 | awk '{print $1}' | cut -d'x' -f2)
+FS=$(( ${H:-1080} / 30 ))
+xterm -fullscreen -fa 'Monospace' -fs "$FS" -bg black -fg white &
+AUTOSTART
+chmod +x ~/.config/openbox/autostart
+echo "→ openbox autostart: xterm with fs=$(( ( $(xrandr 2>/dev/null | grep '*' | head -1 | awk '{print $1}' | cut -d'x' -f2; echo 1080) / 30 ))) (auto-scale)"
+
 echo ""
 echo "=== Done ==="
 echo "Run 'sudo reboot' to apply. After reboot, verify:"
