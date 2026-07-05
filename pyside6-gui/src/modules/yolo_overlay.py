@@ -44,9 +44,11 @@ def draw_overlay(qimage: QImage, response_text: str) -> QImage:
         return result
 
     painter = QPainter(result)
-    font = QFont("monospace", max(10, qimage.width() // 120))
+    font = QFont("monospace", max(14, qimage.width() // 60))
     font.setBold(True)
     painter.setFont(font)
+    fm = painter.fontMetrics()
+    label_h = fm.height() + 4
 
     # Scale bbox from inference resolution back to display resolution
     max_dim = max(qimage.width(), qimage.height())
@@ -67,8 +69,10 @@ def draw_overlay(qimage: QImage, response_text: str) -> QImage:
         painter.drawRect(x1, y1, x2 - x1, y2 - y1)
 
         label = f"{name} {conf:.2f}"
-        painter.setPen(Qt.white)
-        painter.drawText(x1 + 3, y1 - 4, label)
+        tw = fm.horizontalAdvance(label) + 6
+        painter.fillRect(x1, y1, tw, label_h, color)
+        painter.setPen(Qt.black)
+        painter.drawText(x1 + 3, y1 + fm.ascent() + 2, label)
 
     painter.end()
     return result

@@ -84,10 +84,10 @@ class ControlSidebar(QWidget):
 
         grid.addWidget(QLabel("Interval:"), r, 0)
         ir = QHBoxLayout(); ir.setContentsMargins(0, 0, 0, 0)
-        self.interval_edit = QLineEdit("1")
+        self.interval_edit = QLineEdit("1000")
         self.interval_edit.setAlignment(Qt.AlignRight)
         ir.addWidget(self.interval_edit)
-        ir.addWidget(QLabel("sec"))
+        ir.addWidget(QLabel("ms"))
         grid.addLayout(ir, r, 1); r += 1
 
         grid.addWidget(QLabel("Max Tokens:"), r, 0)
@@ -161,6 +161,12 @@ class ControlSidebar(QWidget):
         self.res_combo.clear()
         for f in formats:
             self.res_combo.addItem(f)
+        # Prefer 1920x1080
+        idx = self.res_combo.findText("1920x1080", Qt.MatchStartsWith)
+        if idx < 0:
+            idx = self.res_combo.findText("1920x1080@30")
+        if idx >= 0:
+            self.res_combo.setCurrentIndex(idx)
         self.res_combo.blockSignals(False)
 
     # ----- start / stop -----

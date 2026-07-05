@@ -9,7 +9,7 @@
 #
 #   bash scripts/19-start-pyside6-nogui.sh \
 #       --camera-id 0 --resolution 1280x720@60 \
-#       --model yolo --interval 5 --max-tokens 200
+#       --model yolo --interval 5000 --max-tokens 200
 # ============================================================
 set -euo pipefail
 
@@ -29,7 +29,7 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     echo "  --camera-id N       /dev/videoN index (default: 0)"
     echo "  --resolution WxH@FPS  e.g. 1920x1080@30, 1280x720 (default: 1920x1080)"
     echo "  --model NAME        reason2 | moondream2 | yolo (default: reason2)"
-    echo "  --interval N        seconds between inference (default: 1)"
+    echo "  --interval N        milliseconds between inference (default: 1000)"
     echo "  --prompt TEXT       prompt sent to VLM"
     echo "  --max-tokens N      response token limit 1–2048 (default: 512)"
     echo "  --help, -h          show this message"

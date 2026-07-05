@@ -51,7 +51,6 @@ class KioskWindow(QMainWindow):
         self._interval_timer.timeout.connect(self._on_interval_tick)
         self._mon_timer = QTimer(self)
         self._mon_timer.timeout.connect(self._on_monitor_tick)
-        self._mon_timer.start(5000)
         self._prev_cpu_snap = None
         self._params = {}
         self._latest_frame = None
@@ -143,27 +142,42 @@ class KioskWindow(QMainWindow):
 
         self._video_source = VideoSource(camera_id, width, height)
         self._video_source.frame_ready.connect(self._on_frame)
-        self._video_source.status_message.connect(
-            lambda msg: logger.info(msg))
+        self._video_source.status_message.connect(self._on_video_status)
         self._video_source.start()
 
         self._display.set_res_fps(f"{width}x{height}")
         self._sidebar.set_streaming_state(True)
 
-        interval_ms = max(1, params["interval"]) * 1000
+        self._mon_timer.start(5000)
+
+        interval_ms = max(1, params["interval"])
         self._interval_timer.start(interval_ms)
 
-        logger.info("Streaming %dx%d@%d — interval %ds, model %s",
+        logger.info("Streaming %dx%d@%d — interval %dms, model %s",
                      width, height, fps, params["interval"], params["model"])
 
     @Slot()
     def _on_stop(self):
         self._interval_timer.stop()
+        self._pending_inference = False
+        self._yolo_response = None
         if self._video_source:
             self._video_source.stop()
             self._video_source = None
+        self._latest_frame = None
         self._sidebar.set_streaming_state(False)
+        self._display.set_overlay_text("")
+        self._display.set_stats({})
         self._display.set_frame(QImage())
+        self._display.repaint()
+        self._mon_timer.stop()
+
+    @Slot(str)
+    def _on_video_status(self, msg):
+        logger.info(msg)
+        if "Failed to create CaptureSession" in msg or "error 12" in msg or "unable to allocate" in msg.lower():
+            logger.error("NVMM allocation failed — stopping stream")
+            QTimer.singleShot(100, self._on_stop)
 
     def _on_toggle(self):
         """Toggle streaming."""
@@ -213,6 +227,8 @@ class KioskWindow(QMainWindow):
 
     @Slot(bytes, int, int)
     def _on_frame(self, data, w, h):
+        if self._video_source is None:
+            return  # stopped, ignore late frame
         qimage = QImage(data, w, h, w * 4, QImage.Format_RGBA8888)
         self._latest_frame = qimage
         self._input_count += 1
@@ -261,30 +277,33 @@ class KioskWindow(QMainWindow):
 
     @Slot(str, str)
     def _on_inference_result(self, model, response_text):
+        if self._video_source is None:
+            return  # stopped, ignore late response
         self._pending_inference = False
         t_now = time.time()
         self._reason_ms += (t_now - self._infer_start) * 1000
         self._infer_count += 1
         self._last_overlay = response_text
 
-        t0 = time.time()
-        fn = DRAW.get(model)
-        if fn:
-            frame = self._latest_frame
-            if frame and not frame.isNull():
-                annotated = fn(frame.copy(), response_text)
-                self._display.set_frame(annotated)
+        logger.info("← %s OK (%.0fms)", model, (t_now - self._infer_start) * 1000)
 
-        if model != "yolo":
-            self._display.set_overlay_text(response_text)
-        else:
+        t0 = time.time()
+        if model == "yolo":
+            fn = DRAW.get(model)
+            if fn:
+                frame = self._latest_frame
+                if frame and not frame.isNull():
+                    annotated = fn(frame.copy(), response_text)
+                    self._display.set_frame(annotated)
             self._display.set_overlay_text("")
             self._yolo_response = response_text
+        else:
+            self._display.set_overlay_text(response_text)
         self._display.repaint()
         self._overlay_ms += (time.time() - t0) * 1000
 
         params = self._sidebar.get_params()
-        interval_ms = max(1, params["interval"]) * 1000
+        interval_ms = max(1, params["interval"])
         self._interval_timer.start(interval_ms)
 
     # ----- errors -----
@@ -292,7 +311,7 @@ class KioskWindow(QMainWindow):
     @Slot(str)
     def _on_router_error(self, msg):
         self._pending_inference = False
-        logger.error("Router: %s", msg)
+        logger.error("← %s ERROR: %s", self._params.get("model", "?"), msg)
 
     # ----- keyboard -----
 

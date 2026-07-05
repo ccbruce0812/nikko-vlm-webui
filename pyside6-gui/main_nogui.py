@@ -8,7 +8,7 @@ result drawing.  System monitor stats are drawn via /proc and /sys (no jetson-st
 
 Usage:
   python main_nogui.py [--camera-id 0] [--resolution 1920x1080@30]
-                       [--model reason2] [--interval 1]
+                       [--model reason2] [--interval 1000]
                        [--prompt "Describe this image in one sentence."]
                        [--max-tokens 512]
 """
@@ -58,7 +58,7 @@ def parse_args():
     p.add_argument("--resolution", default="1920x1080",
                    help="e.g. 1920x1080@30, 1280x720@60 (FPS optional after @)")
     p.add_argument("--model", default="reason2")
-    p.add_argument("--interval", type=int, default=1)
+    p.add_argument("--interval", type=int, default=1000)
     p.add_argument("--prompt", default="Describe this image in one sentence.")
     p.add_argument("--max-tokens", type=int, default=512)
     return p.parse_args()
@@ -120,7 +120,7 @@ class HeadlessRunner:
         self._latest_w = 0
         self._latest_h = 0
         self._pending = False
-        self._interval_ms = max(1, args.interval) * 1000
+        self._interval_ms = max(1, args.interval)
 
         # FPS counters
         self._input_count = 0
@@ -250,7 +250,7 @@ class HeadlessRunner:
         mon_timer.timeout.connect(self._on_monitor_tick)
         mon_timer.start(5000)
 
-        logger.info("Streaming %s — interval %ds, model %s",
+        logger.info("Streaming %s — interval %dms, model %s",
                     self._fps_res, self.args.interval, self.args.model)
 
         signal.signal(signal.SIGINT, lambda *_: app.quit())
@@ -359,8 +359,9 @@ class HeadlessRunner:
             self._reason_ms += (time.time() - t0) * 1000
             self._apply_overlay(content)
             self._infer_count += 1
+            logger.info("← %s OK (%.0fms)", self.args.model, (time.time() - t0) * 1000)
         except Exception as e:
-            logger.error("Inference error: %s", e)
+            logger.error("← %s ERROR: %s", self.args.model, e)
         finally:
             self._pending = False
 

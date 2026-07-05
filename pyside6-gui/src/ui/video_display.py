@@ -48,7 +48,10 @@ class VideoDisplay(QWidget):
         self.update()
 
     def set_stats(self, stats: dict):
-        self._stats.update(stats)
+        if stats:
+            self._stats.update(stats)
+        else:
+            self._stats.clear()
         self.update()
 
     def set_res_fps(self, text: str):
@@ -86,28 +89,30 @@ class VideoDisplay(QWidget):
 
     def _draw_caption(self, painter):
         text = self._overlay_text
-        if self._img_rect is None:
+        if not text or self._img_rect is None:
             return
         r = self._img_rect
 
         painter.setFont(self.font())
         metrics = painter.fontMetrics()
         line_h = metrics.height() + 4
-        bar_h = line_h * 5               # exactly 5 lines
-        bar_w = int(r.width() * 0.94)     # 94% of image width
-        gap = int(r.height() * 0.02)      # 2% gap from bottom
+        bar_h = line_h * 5
+        bar_w = int(r.width() * 0.94)
+        gap_y = int(r.height() * 0.02)
 
         bx = r.x() + (r.width() - bar_w) // 2
-        by = r.y() + r.height() - bar_h - gap
+        by = r.y() + r.height() - bar_h - gap_y
 
         painter.fillRect(bx, by, bar_w, bar_h, QColor(0, 0, 0, 160))
         painter.setPen(Qt.white)
-        painter.drawText(bx + 6, by, bar_w - 12, bar_h,
-                         Qt.AlignLeft | Qt.AlignVCenter | Qt.TextWordWrap, text)
+        painter.drawText(bx + 6, by + 4, bar_w - 12, bar_h - 4,
+                         Qt.AlignLeft | Qt.AlignTop | Qt.TextWordWrap, text)
 
     def _draw_monitor(self, painter):
         if self._img_rect is None:
             return
+        if "fps" not in self._stats:
+            return  # stopped — hide OSD
         r = self._img_rect
         fps = self._stats.get("fps", 0)
         reason = self._stats.get("reason", 0)
