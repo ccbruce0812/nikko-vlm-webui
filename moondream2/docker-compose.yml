@@ -23,17 +23,6 @@ services:
               count: 1
               capabilities: [gpu]
 
-  live-vlm-webui:
-    image: live-vlm-webui
-    container_name: live-vlm-webui
-    network_mode: host
-    privileged: true
-    runtime: nvidia
-    volumes:
-      - /sys:/sys:ro
-      - /run/jtop.sock:/run/jtop.sock:ro
-    restart: unless-stopped
-
 networks:
   vlm-net:
     driver: bridge
