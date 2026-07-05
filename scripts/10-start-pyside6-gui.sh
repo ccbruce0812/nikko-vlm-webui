@@ -1,11 +1,11 @@
 #!/bin/bash
 # ============================================================
-# 16-start-pyside6-gui.sh
+# 10-start-pyside6-gui.sh
 # Starts Xorg (if needed), nvargus-daemon, then launches GUI.
 # Cleans up Xorg on exit only if it was started by this script.
 #
 # Usage:
-#   bash scripts/16-start-pyside6-gui.sh
+#   bash scripts/10-start-pyside6-gui.sh
 # ============================================================
 set -euo pipefail
 
@@ -16,7 +16,7 @@ GUI_DIR="${PROJECT_DIR}/pyside6-gui"
 
 # ---- help ----
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-    echo "Usage: bash scripts/16-start-pyside6-gui.sh"
+    echo "Usage: bash scripts/10-start-pyside6-gui.sh"
     echo ""
     echo "  Launch the kiosk GUI (PySide6 fullscreen window)."
     echo "  Handles Xorg/openbox lifecycle, nvargus-daemon, DISPLAY automatically."
@@ -29,7 +29,7 @@ fi
 
 if [ ! -f "${VENV_DIR}/bin/activate" ]; then
     echo "[ERROR] venv not found at ${VENV_DIR}"
-    echo "        Run: bash scripts/15-install-pyside6-gui.sh"
+    echo "        Run: bash scripts/09-install-pyside6-gui.sh"
     exit 1
 fi
 

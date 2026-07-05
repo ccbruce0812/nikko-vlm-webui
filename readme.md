@@ -309,7 +309,6 @@ rm -rf /tmp/model-dl-venv
 
 ### 1. Build Instructions
 
-Model containers include Dockerfile, docker-compose.yml, and download script. Utility containers have only Dockerfile.
 
 ```bash
 # Run from nikko-vlm-webui root
@@ -336,7 +335,7 @@ sudo docker build -t yolo yolo/
 sudo docker build -t rtsp-server rtsp-server/
 ```
 
-> 📄 Script: `scripts/05-build-all.sh` (run: `bash scripts/05-build-all.sh`)
+> 📄 Script: `scripts/05-build-all.sh`
 
 ## Container Description
 
@@ -353,45 +352,24 @@ All containers on `vlm-net` bridged network.  Router and RTSP server also expose
 
 ## Start Services
 
-### 1. docker-compose
-
-Three stacks, start/stop from their respective directories (model + router only;
-WebUI is started separately via `scripts/20-start-live-vlm-webui.sh`):
+### 1. Interactive Launcher (recommended)
 
 ```bash
-# Run from nikko-vlm-webui root
-
-# Reason2 stack
-(cd reason2 && sudo docker compose up -d)      # start
-(cd reason2 && sudo docker compose down)       # stop
-
-# or moondream2 stack
-(cd moondream2 && sudo docker compose up -d)   # start
-(cd moondream2 && sudo docker compose down)    # stop
-
-# or YOLO stack
-(cd yolo && sudo docker compose up -d)         # start
-(cd yolo && sudo docker compose down)          # stop
+bash scripts/06-start-models.sh
 ```
 
-> 📄 Start: `scripts/06-start-reason2.sh` / `08-start-moondream2.sh` / `10-start-yolo.sh`
-> 📄 Stop: `scripts/07-stop-reason2.sh` / `09-stop-moondream2.sh` / `11-stop-yolo.sh`
+Starts Router (always), then interactively pick a model:
+- **Reason2** or **moondream2** (VLM, mutually exclusive)
+- **YOLO** (object detection, can run solo or paired with a VLM)
+- Each VLM shows its default parameters (GPU layers, threads, batch, ctx, flash-attn) — press Enter to keep defaults or type new values
+- Automatically handles power mode, nvargus-daemon restart, and memory tuning
+
+> 📄 Start: `scripts/06-start-models.sh`
+> 📄 Stop:  `scripts/07-stop-models.sh` (removes all containers + vlm-net)
 
 ### 2. Manual docker run
 
-**Do NOT run multiple models simultaneously** (shared CMA memory; Orin Nano has only 7.4GB RAM).
-The script prompts you to pick one model and optionally start RTSP Server.
-
-```bash
-bash scripts/12-start-manual.sh
-```
-
-Script flow:
-1. Auto-starts Router + WebUI (required infrastructure)
-2. Interactive model selection (Reason2 / moondream2 / YOLO — pick one)
-3. Ask whether to start RTSP Server (CSI camera streaming, optional)
-
-For individual manual control, reference commands below:
+For individual control, reference commands:
 
 ```bash
 # Create shared network (once)
@@ -400,7 +378,7 @@ sudo docker network create vlm-net
 # Router (required)
 sudo docker run -d --name router --network vlm-net -p 8080:8080 router
 
-# Pick one model (do NOT start multiple):
+# Pick one model (do NOT start multiple VLM simultaneously):
 # Reason2 (~2.6GB GPU)
 sudo docker run -d --name reason2 --runtime nvidia --network vlm-net \
     -v "$(pwd)/models/reason2:/model:ro" reason2
@@ -409,23 +387,13 @@ sudo docker run -d --name reason2 --runtime nvidia --network vlm-net \
 sudo docker run -d --name moondream2 --runtime nvidia --network vlm-net \
     -v "$(pwd)/models/moondream2:/model:ro" moondream2
 
-# YOLO (~1.5GB GPU)
+# YOLO (~1.5GB GPU, can co-exist with one VLM)
 sudo docker run -d --name yolo --runtime nvidia --network vlm-net \
     -v "$(pwd)/models/yolo:/model:ro" yolo
 
-# WebUI (required, host network) — see live-vlm-webui.md
-sudo docker run -d --name live-vlm-webui --network host --runtime nvidia --privileged \
-    --device=/dev/video0 live-vlm-webui
-
-# RTSP Server (optional, CSI camera streaming)
-sudo docker run -d --name rtsp-server --runtime nvidia --network host \
-    --device=/dev/video0 --device=/dev/media0 \
-    -v /tmp:/tmp \
-    -e WIDTH=1280 -e HEIGHT=720 -e FPS=30 rtsp-server
+# WebUI (host network) — see live-vlm-webui.md
+# RTSP Server — see rtsp-server.md
 ```
-
-> 📄 Script: `scripts/12-start-manual.sh` (run: `bash scripts/12-start-manual.sh`)
-> 📄 Stop all: `scripts/13-stop-manual.sh`
 
 ## Manual Testing
 
@@ -541,7 +509,7 @@ for model in ['reason2', 'moondream2', 'yolo']:
 "
 ```
 
-> 📄 Script: `scripts/14-test-quick.sh` (run: `bash scripts/14-test-quick.sh`)
+> 📄 Script: `scripts/08-test-quick.sh` (run: `bash scripts/08-test-quick.sh`)
 
 ## Performance Data
 
@@ -604,7 +572,7 @@ sudo docker system prune -af --volumes
 
 # Python venv: rebuild if packages are stale
 # rm -rf pyside6-gui-venv
-# 17-start-pyside6-nogui.sh
+# 11-start-pyside6-nogui.sh
 ```
 
 **Release and compact memory:**
@@ -653,15 +621,12 @@ sudo systemctl start nvargus-daemon
 │   └── router.py                 # dynamic model detection
 ├── reason2/
 │   ├── Dockerfile                # llama-server from source
-│   ├── docker-compose.yml        # reason2 + router + webui
 │   └── download_model.sh         # IQ4_XS LLM + F16 mmproj
 ├── moondream2/
 │   ├── Dockerfile                # llama-server pre-built binaries
-│   ├── docker-compose.yml        # moondream2 + router + webui
 │   └── download_model.sh         # q4_k LLM + f16 mmproj
 ├── yolo/
 │   ├── Dockerfile                # PyTorch + ultralytics + TensorRT
-│   ├── docker-compose.yml        # yolo + router + webui
 │   ├── yolo_server.py            # OpenAI-compatible API server
 │   └── download_model.sh         # YOLO → TensorRT engine export
 ├── live-vlm-webui/
@@ -676,27 +641,21 @@ sudo systemctl start nvargus-daemon
 │   └── yolo/
 ├── test/
 ├── scripts/
-│   ├── 01-disable-gui.sh               # disable GUI + enable Xorg via xorg.service
+│   ├── 01-disable-gui.sh               # disable GUI + enable Xorg/openbox
 │   ├── 02-system-config.sh             # CSI camera + Super Mode 25W + NVMap + memory tuning
 │   ├── 03-install-deps.sh              # install basic packages
 │   ├── 04-download-models.sh           # download all models
 │   ├── 05-build-all.sh                 # build all containers
-│   ├── 06-start-reason2.sh             # start Reason2 stack
-│   ├── 07-stop-reason2.sh              # stop Reason2
-│   ├── 08-start-moondream2.sh          # start moondream2 stack
-│   ├── 09-stop-moondream2.sh           # stop moondream2
-│   ├── 10-start-yolo.sh                # start YOLO stack
-│   ├── 11-stop-yolo.sh                 # stop YOLO
-│   ├── 12-start-manual.sh              # interactive container launcher
-│   ├── 13-stop-manual.sh               # stop all manually started containers
-│   ├── 14-test-quick.sh                # quick model validation
-│   ├── 15-install-pyside6-gui.sh       # pyside6-gui venv + packages
-│   ├── 16-start-pyside6-gui.sh         # launch kiosk GUI
-│   ├── 17-start-pyside6-nogui.sh       # launch headless validation
-│   ├── 18-start-rtsp-server.sh         # start RTSP Server (CSI camera, optional)
-│   └── 19-stop-rtsp-server.sh          # stop RTSP Server
-│   ├── 20-start-live-vlm-webui.sh      # start browser WebUI
-│   └── 21-stop-live-vlm-webui.sh       # stop browser WebUI
+│   ├── 06-start-models.sh              # interactive model launcher (router + model)
+│   ├── 07-stop-models.sh               # stop all models + remove vlm-net
+│   ├── 08-test-quick.sh                # quick model validation
+│   ├── 09-install-pyside6-gui.sh       # pyside6-gui venv + packages
+│   ├── 10-start-pyside6-gui.sh         # launch kiosk GUI
+│   ├── 11-start-pyside6-nogui.sh       # launch headless validation
+│   ├── 12-start-rtsp-server.sh         # start RTSP Server (CSI camera, optional)
+│   ├── 13-stop-rtsp-server.sh          # stop RTSP Server
+│   ├── 14-start-live-vlm-webui.sh      # start browser WebUI
+│   └── 15-stop-live-vlm-webui.sh       # stop browser WebUI
 ├── pyside6-gui/
 │   ├── main.py                         # GUI entry point
 │   ├── main_nogui.py                   # headless entry point

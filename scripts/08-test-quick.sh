@@ -20,7 +20,7 @@ except Exception as e:
     sys.exit(1)
 
 if not running:
-    print('⚠ No models running. Start a model first (e.g., bash scripts/12-start-manual.sh)')
+    print('⚠ No models running. Start a model first (e.g., bash scripts/06-start-models.sh)')
     sys.exit(0)
 
 # 2. Read test image

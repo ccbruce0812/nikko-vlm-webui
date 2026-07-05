@@ -74,8 +74,8 @@ Pre-configured environment variables point to the local Router:
 
 | Action | Script |
 |--------|--------|
-| Start | `bash scripts/20-start-live-vlm-webui.sh [OPTIONS]` |
-| Stop | `bash scripts/21-stop-live-vlm-webui.sh` |
+| Start | `bash scripts/14-start-live-vlm-webui.sh [OPTIONS]` |
+| Stop | `bash scripts/15-stop-live-vlm-webui.sh` |
 
 The start script checks that no existing instance is running, removes any stale
 container, then launches with the specified port (default 8090).
@@ -90,7 +90,7 @@ container, then launches with the specified port (default 8090).
 Example:
 
 ```bash
-bash scripts/20-start-live-vlm-webui.sh --port 8091
+bash scripts/14-start-live-vlm-webui.sh --port 8091
 ```
 
 ### Manual docker run
@@ -127,7 +127,7 @@ RTSP server is not running or started after WebUI.  The WebUI tries 5 reconnecti
 attempts then gives up.  Start RTSP server first, then WebUI:
 
 ```bash
-bash scripts/18-start-rtsp-server.sh
+bash scripts/12-start-rtsp-server.sh
 sudo docker restart live-vlm-webui
 ```
 

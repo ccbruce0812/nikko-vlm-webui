@@ -5,7 +5,7 @@
 set -euo pipefail
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-    echo "Usage: bash scripts/21-stop-live-vlm-webui.sh"
+    echo "Usage: bash scripts/15-stop-live-vlm-webui.sh"
     echo ""
     echo "  Stop and remove the live-vlm-webui Docker container."
     exit 0
