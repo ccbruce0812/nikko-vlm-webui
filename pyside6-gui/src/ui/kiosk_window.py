@@ -76,9 +76,14 @@ class KioskWindow(QMainWindow):
         self._init_ui()
         self._connect_signals()
 
+        # ---- Camera check: fatal if none ----
+        if self._sidebar.camera_count() == 0:
+            logger.error("No camera found — exiting")
+            QTimer.singleShot(100, self.close)
+            return
+
         # Start background
         self._router.start()
-
         QTimer.singleShot(500, self._router.fetch_models)
 
     def _init_ui(self):
@@ -105,11 +110,17 @@ class KioskWindow(QMainWindow):
         self._sidebar.start_clicked.connect(self._on_start)
         self._sidebar.stop_clicked.connect(self._on_stop)
         self._sidebar.quit_clicked.connect(self.close)
-        self._router.models_ready.connect(self._sidebar.set_models)
+        self._router.models_ready.connect(self._on_models_ready)
         self._router.result_ready.connect(self._on_inference_result)
         self._router.error_occurred.connect(self._on_router_error)
 
     # ----- start / stop -----
+
+    @Slot(list)
+    def _on_models_ready(self, models):
+        self._sidebar.set_models(models)
+        if not models:
+            logger.warning("No models available — select \"No Model\" for view-only")
 
     @Slot(int, int, int)
     def _on_start(self, camera_id, width, height):
@@ -227,7 +238,7 @@ class KioskWindow(QMainWindow):
 
         params = self._sidebar.get_params()
         model = params["model"]
-        if not model:
+        if not model or model == "No Model":
             return
 
         if model != "yolo":

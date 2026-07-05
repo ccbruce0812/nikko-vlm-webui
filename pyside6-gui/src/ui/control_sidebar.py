@@ -149,6 +149,9 @@ class ControlSidebar(QWidget):
         if self.camera_combo.count() > 0:
             self._on_camera_changed(0)
 
+    def camera_count(self):
+        return self.camera_combo.count()
+
     def _on_camera_changed(self, index):
         dev_id = self.camera_combo.itemData(index)
         if dev_id is None:
@@ -210,9 +213,10 @@ class ControlSidebar(QWidget):
         current = self.model_combo.currentText()
         self.model_combo.blockSignals(True)
         self.model_combo.clear()
+        self.model_combo.addItem("No Model")
         for model_id, _ in models:
             self.model_combo.addItem(model_id)
-        if current:
+        if current and current != "No Model":
             idx = self.model_combo.findText(current)
             if idx >= 0:
                 self.model_combo.setCurrentIndex(idx)
