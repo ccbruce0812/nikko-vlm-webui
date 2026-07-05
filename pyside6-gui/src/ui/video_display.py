@@ -44,7 +44,7 @@ class VideoDisplay(QWidget):
         self.update()
 
     def set_overlay_text(self, text: str):
-        self._overlay_text = text
+        self._overlay_text = text.strip() if text else ""
         self.update()
 
     def set_stats(self, stats: dict):
@@ -88,7 +88,7 @@ class VideoDisplay(QWidget):
         painter.end()
 
     def _draw_caption(self, painter):
-        text = self._overlay_text
+        text = self._overlay_text.strip()
         if not text or self._img_rect is None:
             return
         r = self._img_rect
@@ -99,14 +99,28 @@ class VideoDisplay(QWidget):
         bar_h = line_h * 5
         bar_w = int(r.width() * 0.94)
         gap_y = int(r.height() * 0.02)
+        text_w = bar_w - 12
 
         bx = r.x() + (r.width() - bar_w) // 2
         by = r.y() + r.height() - bar_h - gap_y
 
+        # Truncate text to fit 5 lines
+        elided = ""
+        for ch in text:
+            test = elided + ch
+            rect = metrics.boundingRect(0, 0, text_w, bar_h - 4,
+                                         Qt.AlignLeft | Qt.AlignTop | Qt.TextWordWrap, test)
+            if rect.height() > bar_h - 4:
+                elided = elided.rstrip() + "…"
+                break
+            elided = test
+        if not elided:
+            elided = text
+
         painter.fillRect(bx, by, bar_w, bar_h, QColor(0, 0, 0, 160))
         painter.setPen(Qt.white)
-        painter.drawText(bx + 6, by + 4, bar_w - 12, bar_h - 4,
-                         Qt.AlignLeft | Qt.AlignTop | Qt.TextWordWrap, text)
+        painter.drawText(bx + 6, by + 4, text_w, bar_h - 4,
+                         Qt.AlignLeft | Qt.AlignTop | Qt.TextWordWrap, elided)
 
     def _draw_monitor(self, painter):
         if self._img_rect is None:

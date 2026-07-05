@@ -97,7 +97,7 @@ class ControlSidebar(QWidget):
 
         grid.addWidget(QLabel("Prompt:"), r, 0); r += 1
         self.prompt_edit = QTextEdit()
-        self.prompt_edit.setPlainText("Describe this image in one sentence.")
+        self.prompt_edit.setPlainText("Describe this image in one sentence without coordinates or numbers.")
         fm = self.prompt_edit.fontMetrics()
         self.prompt_edit.setFixedHeight((fm.height() + 4) * 10)
         self.prompt_edit.setTabChangesFocus(True)
