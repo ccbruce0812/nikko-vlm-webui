@@ -11,21 +11,28 @@ customized with Jetson GPU monitor fix and pre-configured for the local Router A
 Provides a browser-based WebRTC frontend that relays CSI camera frames (via RTSP server)
 and dispatches VLM inference through the Router at `localhost:8080`.
 
-## Architecture
+### 1. Architecture
 
+```mermaid
+flowchart LR
+    Browser["Browser"]
+    WebUI["live-vlm-webui<br/>:8090<br/>(WebRTC + API client)"]
+    RTSP["rtsp-server<br/>:8554"]
+    CSI["CSI Camera<br/>(IMX219)"]
+    Router["Router<br/>:8080"]
+    Models["reason2 / moondream2 / YOLO<br/>(Model Containers)"]
+
+    Browser <-->|"WebRTC"| WebUI
+    WebUI -->|"RTSP relay"| RTSP --> CSI
+    WebUI -->|"HTTP API"| Router --> Models
 ```
-Browser ──WebRTC──► live-vlm-webui (:8090, host network)
-                         │
-                         ├── RTSP ──► rtsp-server (:8554, host network) ──► CSI Camera
-                         │
-                         └── HTTP ──► router (:8080, vlm-net) ──► model container
-```
 
-The WebUI uses host networking (`--network host`) for WebRTC (needs direct UDP) and
-RTSP relay (connects to `localhost:8554`).  Model inference goes through the Router
-API on the `vlm-net` bridged network.
+The WebUI sits at the center: it relays the RTSP camera feed to the browser as WebRTC,
+and forwards user prompts to the Router API for inference. Uses host networking
+(`--network host`) for WebRTC (needs direct UDP) and RTSP relay (`localhost:8554`).
+Model inference goes through the Router on the `vlm-net` bridged network.
 
-## Pipeline
+### 2. Pipeline
 
 ```
 CSI Camera → rtsp-server (H.264 RTSP) → live-vlm-webui (WebRTC relay) → Browser

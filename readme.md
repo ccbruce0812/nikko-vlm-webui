@@ -8,14 +8,32 @@ Multi-model VLM inference on NVIDIA Jetson Orin Nano via Docker containers, usin
 
 ```mermaid
 flowchart LR
-    Browser["Browser"]
-    WebUI["live-vlm-webui<br/>:8090"]
-    Router["Router<br/>:8080"]
-    Moon["moondream2 GGUF<br/>:8001"]
-    Cosmos["Reason2 GGUF<br/>:8002"]
-    YOLO["YOLO TensorRT<br/>:8003"]
+    subgraph Clients["Clients"]
+        Browser["Browser"]
+        Kiosk["pyside6-gui<br/>(Kiosk GUI)"]
+        Nogui["pyside6-nogui<br/>(Headless)"]
+    end
+
+    subgraph Infra["Infrastructure"]
+        WebUI["live-vlm-webui<br/>:8090"]
+        RTSP["rtsp-server<br/>:8554"]
+        Router["Router<br/>:8080"]
+    end
+
+    subgraph Models["Models"]
+        Moon["moondream2 GGUF<br/>:8001"]
+        Cosmos["Reason2 GGUF<br/>:8002"]
+        YOLO["YOLO<br/>:8003"]
+    end
+
+    CSI["CSI Camera<br/>(IMX219)"]
 
     Browser --> WebUI --> Router
+    CSI --> RTSP --> WebUI
+    CSI --> Kiosk
+    CSI --> Nogui
+    Kiosk --> Router
+    Nogui --> Router
     Router --> Moon
     Router --> Cosmos
     Router --> YOLO

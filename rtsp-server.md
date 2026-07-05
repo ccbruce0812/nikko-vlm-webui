@@ -9,7 +9,22 @@ Streams the CSI camera (IMX219, CAM0) as an H.264 RTSP feed via nvarguscamerasrc
 The stream is consumed by `live-vlm-webui` (WebRTC relay) or any standard RTSP
 client (VLC, ffplay, GStreamer).
 
-## Pipeline
+### 1. Architecture
+
+```mermaid
+flowchart LR
+    CSI["CSI Camera<br/>(IMX219)"]
+    RTSP["rtsp-server<br/>:8554<br/>(nvarguscamerasrc → H.264)"]
+    WebUI["live-vlm-webui<br/>:8090<br/>(WebRTC relay)"]
+    Browser["Browser"]
+    Client["RTSP Client<br/>(VLC / ffplay)"]
+
+    CSI --> RTSP
+    RTSP --> WebUI --> Browser
+    RTSP --> Client
+```
+
+## 2. Pipeline
 
 ```
 nvarguscamerasrc camera-id=0
