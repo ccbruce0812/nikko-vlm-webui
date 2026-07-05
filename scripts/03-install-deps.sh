@@ -10,5 +10,5 @@ sudo docker info 2>/dev/null | grep -i runtime || echo "⚠ Docker not installed
 
 echo ""
 echo "=== Install python3-venv (required by model download script) ==="
-sudo apt-get install -y python3-venv v4l-utils libxcb-cursor0 python3-pip jetson-stats
+sudo apt-get install -y python3-venv v4l-utils libxcb-cursor0 python3-pip
 echo "✓ python3-venv installed"
