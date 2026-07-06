@@ -3,6 +3,8 @@
 import sys
 import signal
 import logging
+import argparse
+import os
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt, QTimer
@@ -24,7 +26,16 @@ def _handle_signal(sig, frame):
     _quit_flag = True
 
 
+def _parse_args():
+    p = argparse.ArgumentParser(description="Kiosk VLM GUI")
+    p.add_argument("--dpi-scale", type=float, default=2.0,
+                   help="DPI scale factor (default: 2.0)")
+    return p.parse_args()
+
+
 def main():
+    args = _parse_args()
+
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
@@ -32,23 +43,23 @@ def main():
     app.setStyle("Fusion")
 
     # Load dark theme stylesheet
-    import os
     qss_path = os.path.join(os.path.dirname(__file__), "assets", "style.qss")
     if os.path.exists(qss_path):
         with open(qss_path) as f:
             app.setStyleSheet(f.read())
 
-    # Font scaling — base 9pt at 800px height, proportional to screen
+    # Font scaling — base 12pt at 96 DPI × scale factor
     screen = app.primaryScreen()
     if screen:
-        ref_h = screen.size().height()
-        pts = max(10, int(12 * ref_h / 800))
+        dpi = screen.logicalDotsPerInch()
+        pts = max(10, int(12 * dpi / 96 * args.dpi_scale))
     else:
-        pts = 9
+        pts = 10
     font = app.font()
     font.setPointSize(pts)
     font.setFamily("monospace")
     app.setFont(font)
+    logger.info("Font: %dpt (DPI=%.0f, scale=%.1fx)", pts, dpi if screen else 0, args.dpi_scale)
 
     window = KioskWindow()
     window.showFullScreen()
@@ -56,8 +67,6 @@ def main():
     # Handle Ctrl-C / SIGTERM
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
-
-    # Qt timer to check for signal (safe call from Qt event loop)
     timer = QTimer()
     timer.timeout.connect(lambda: app.quit() if _quit_flag else None)
     timer.start(200)

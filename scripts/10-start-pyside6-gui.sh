@@ -16,14 +16,13 @@ GUI_DIR="${PROJECT_DIR}/pyside6-gui"
 
 # ---- help ----
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-    echo "Usage: bash scripts/10-start-pyside6-gui.sh"
+    echo "Usage: bash scripts/10-start-pyside6-gui.sh [--dpi-scale SCALE]"
     echo ""
     echo "  Launch the kiosk GUI (PySide6 fullscreen window)."
-    echo "  Handles Xorg/openbox lifecycle, nvargus-daemon, DISPLAY automatically."
+    echo "  Requires Xorg (xorg.service) and openbox.service."
     echo ""
-    echo "  No CLI arguments — all configuration is done in the GUI sidebar."
-    echo ""
-    echo "  Requires: xorg.service, openbox.service, pyside6-gui-venv/"
+    echo "  --dpi-scale SCALE    Font scale factor (default: 2.0)"
+    echo "                       Font = 12 × DPI/96 × scale"
     exit 0
 fi
 
@@ -83,4 +82,4 @@ fi
 export QT_QPA_PLATFORM=xcb
 source "${VENV_DIR}/bin/activate"
 cd "${GUI_DIR}"
-python main.py
+python main.py "$@"

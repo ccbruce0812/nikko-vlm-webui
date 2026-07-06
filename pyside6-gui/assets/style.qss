@@ -13,7 +13,13 @@ QGroupBox::title {
     left: 8px;
     top: 2px;
 }
-QComboBox, QLineEdit, QTextEdit { background-color: #2a2a2a; color: #ddd; border: 1px solid #555; padding: 4px; }
+QComboBox, QLineEdit, QTextEdit { background-color: #2a2a2a; color: #ddd; border: 1px solid #555; padding: 6px; }
+QComboBox QAbstractItemView {
+    background-color: #2a2a2a;
+    color: #ddd;
+    selection-background-color: #444;
+    selection-color: #fff;
+}
 QPushButton { background-color: #333; color: #ddd; border: 1px solid #555; padding: 6px 12px; border-radius: 3px; font-weight: bold; }
 QPushButton:hover { background-color: #444; }
 QPushButton:pressed { background-color: #555; }

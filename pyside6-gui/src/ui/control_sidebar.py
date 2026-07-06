@@ -7,11 +7,31 @@ import re
 from PySide6.QtWidgets import (
     QWidget, QGridLayout, QHBoxLayout, QLabel,
     QComboBox, QLineEdit, QTextEdit, QPushButton, QSizePolicy,
+    QStyledItemDelegate, QStyle, QFrame,
 )
 from PySide6.QtCore import Signal, Qt
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QColor
 
 from src.modules.video_source import VideoSource
+
+
+class _DarkComboDelegate(QStyledItemDelegate):
+    """Custom delegate: dark background, hover highlight for combo items."""
+
+    def paint(self, painter, option, index):
+        # Hover highlight
+        if option.state & QStyle.State_MouseOver:
+            painter.fillRect(option.rect, QColor("#3a3a3a"))
+        else:
+            painter.fillRect(option.rect, QColor("#2a2a2a"))
+        # Selected item
+        if option.state & QStyle.State_Selected:
+            painter.fillRect(option.rect, QColor("#444"))
+        # Text
+        painter.setPen(QColor("#ddd"))
+        painter.drawText(option.rect.adjusted(6, 0, -6, 0),
+                         Qt.AlignLeft | Qt.AlignVCenter,
+                         index.data())
 
 
 class ControlSidebar(QWidget):
@@ -54,18 +74,19 @@ class ControlSidebar(QWidget):
 
         grid.addWidget(QLabel("Camera ID:"), r, 0)
         self.camera_combo = QComboBox()
+        self.camera_combo.setItemDelegate(_DarkComboDelegate(self.camera_combo))
         self.camera_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         grid.addWidget(self.camera_combo, r, 1); r += 1
 
         grid.addWidget(QLabel("Res/FPS:"), r, 0)
         self.res_combo = QComboBox()
+        self.res_combo.setItemDelegate(_DarkComboDelegate(self.res_combo))
         self.res_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         grid.addWidget(self.res_combo, r, 1); r += 1
 
         grid.setRowMinimumHeight(r, 12); r += 1  # spacer row
 
         # Separator line
-        from PySide6.QtWidgets import QFrame
         sep = QFrame()
         sep.setFrameShape(QFrame.HLine)
         sep.setFrameShadow(QFrame.Sunken)
@@ -79,6 +100,7 @@ class ControlSidebar(QWidget):
 
         grid.addWidget(QLabel("Model:"), r, 0)
         self.model_combo = QComboBox()
+        self.model_combo.setItemDelegate(_DarkComboDelegate(self.model_combo))
         self.model_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         grid.addWidget(self.model_combo, r, 1); r += 1
 
@@ -106,7 +128,6 @@ class ControlSidebar(QWidget):
         grid.setRowMinimumHeight(r, 6); r += 1  # spacer
 
         # Separator line
-        from PySide6.QtWidgets import QFrame
         sep2 = QFrame()
         sep2.setFrameShape(QFrame.HLine)
         sep2.setFrameShadow(QFrame.Sunken)

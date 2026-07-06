@@ -15,14 +15,13 @@ MAIN_DIR="${PROJECT_DIR}/pyside6-main"
 
 # ---- help ----
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-    echo "Usage: bash scripts/17-start-pyside6-main.sh"
+    echo "Usage: bash scripts/17-start-pyside6-main.sh [--dpi-scale SCALE]"
     echo ""
     echo "  Launch the pyside6-main GUI (windowed, with title bar)."
     echo "  Requires Xorg + openbox and Router API."
     echo ""
-    echo "  No CLI arguments — configure via the Control Panel and AI Panel."
-    echo ""
-    echo "  Requires: pyside6-main-venv/"
+    echo "  --dpi-scale SCALE    Font scale factor (default: 2.0)"
+    echo "                       Font = 12 × DPI/96 × scale"
     exit 0
 fi
 
@@ -81,4 +80,4 @@ export QT_QPA_PLATFORM=xcb
 source "${VENV_DIR}/bin/activate"
 cd "${MAIN_DIR}"
 echo "[INFO] Starting pyside6-main GUI..."
-python main.py
+python main.py "$@"

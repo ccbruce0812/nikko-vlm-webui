@@ -15,7 +15,7 @@ from src.modules.system_monitor import read_stats
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [gui] %(message)s", datefmt="%H:%M:%S")
 logger = logging.getLogger(__name__)
 
-ROUTER_URL = "http://localhost:8080"
+# YOLO interval (ms)
 YOLO_INTERVAL_MS = 500
 
 
@@ -29,7 +29,7 @@ class MainWindow(QMainWindow):
         self._is_stopping = False
 
         # Router client (HTTP API)
-        self._router = RouterClient(ROUTER_URL)
+        self._router = RouterClient()
 
         # YOLO state
         self._yolo_available = False
@@ -222,7 +222,7 @@ class MainWindow(QMainWindow):
         self._infer_start = time.time()
         self._pending_inference = True
         logger.info("POST /v1/chat/completions → yolo (%.0f KB)", self._payload_kb)
-        self._router.send_raw_payload("yolo", payload)
+        self._router.send_raw_payload(payload)
 
     # ========== VLM submit (from AI config panel) ==========
 
@@ -231,12 +231,19 @@ class MainWindow(QMainWindow):
         if self._latest_frame is None:
             self.ai_config_panel.set_result("Error: No video stream")
             return
-        if self._pending_inference:
-            return
 
         self._yolo_paused = True
         self._yolo_response = None
 
+        if self._pending_inference:
+            # YOLO is running — queue VLM for after it finishes
+            self._vlm_queued = (model, prompt)
+            logger.info("VLM %s queued, waiting for YOLO to finish", model)
+            return
+
+        self._do_vlm_inference(model, prompt)
+
+    def _do_vlm_inference(self, model, prompt):
         if model == "reason2":
             from src.modules.reason2_overlay import prepare_payload
         else:
@@ -246,7 +253,7 @@ class MainWindow(QMainWindow):
         self._infer_start = time.time()
         self._pending_inference = True
         logger.info("POST /v1/chat/completions → %s (%.0f KB)", model, self._payload_kb)
-        self._router.send_raw_payload(model, payload)
+        self._router.send_raw_payload(payload)
 
     # ========== Inference results ==========
 
@@ -260,6 +267,11 @@ class MainWindow(QMainWindow):
         if model == "yolo":
             self._yolo_response = response_text
             logger.info("← yolo OK (%.0fms)", (t_now - self._infer_start) * 1000)
+            # Check for queued VLM
+            if hasattr(self, '_vlm_queued') and self._vlm_queued:
+                m, p = self._vlm_queued
+                self._vlm_queued = None
+                self._do_vlm_inference(m, p)
             return
 
         self._yolo_paused = False
