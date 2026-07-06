@@ -1,4 +1,5 @@
 models/*
 ttyd-tunnel/*
 pyside6-gui-venv
+pyside6-main-venv
 __pycache__
