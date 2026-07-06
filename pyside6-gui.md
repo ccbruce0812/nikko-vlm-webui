@@ -1,8 +1,8 @@
 # Kiosk VLM GUI
 
-> This document covers the PySide6 kiosk GUI and headless validation tool.
-> For Docker backend, model setup, and system configuration see [readme.md](readme.md).
-> For the browser-based WebUI alternative, see [live-vlm-webui.md](live-vlm-webui.md).
+This document covers the PySide6 kiosk GUI and headless validation tool.
+For Docker backend, model setup, and system configuration see [readme.md](readme.md).
+For the browser-based WebUI alternative, see [live-vlm-webui.md](live-vlm-webui.md).
 
 ## Overview
 
@@ -11,6 +11,8 @@ VLM inference. All AI inference is delegated to Docker containers via the Router
 A headless variant (`main_nogui.py`) is also provided for pipeline validation.
 
 ### 1. Architecture
+
+**System-level:**
 
 ```mermaid
 flowchart TB
@@ -36,18 +38,56 @@ flowchart TB
     RTR --> YL
 ```
 
-- Frame Flow
+**Module-level:**
 
+```mermaid
+flowchart TB
+    subgraph UI["UI Layer"]
+        Main["kiosk_window.py<br/>(MainWindow)"]
+        Sidebar["control_sidebar.py<br/>(ControlSidebar)"]
+        Display["video_display.py<br/>(VideoDisplay)"]
+    end
+
+    subgraph Modules["Modules"]
+        VS["video_source.py<br/>(GStreamer pipeline)"]
+        RC["router_client.py<br/>(QThread HTTP)"]
+        SM["system_monitor.py<br/>(/proc + /sys)"]
+    end
+
+    subgraph Overlay["Overlay Modules"]
+        YO["yolo_overlay.py"]
+        R2O["reason2_overlay.py"]
+        MD2O["moondream2_overlay.py"]
+    end
+
+    Main --> Sidebar
+    Main --> Display
+    Main --> VS
+    Main --> RC
+    Main --> SM
+    Main --> YO
+    Main --> R2O
+    Main --> MD2O
+    VS -- "frame_ready (RGBA)" --> Main
+    RC -- "result_ready / error" --> Main
+    SM -- "read_stats()" --> Main
 ```
-CSI Camera → GStreamer (nvarguscamerasrc + NVMM zero-copy) → appsink
-    │
-    │  RGBA buffer (zero-copy wrap into QImage::Format_RGBA8888)
-    │
-    ├───→ Video Display (5/6 width, right side)
-    │     └─ YOLO boxes / VLM captions drawn as QPainter overlays
-    │
-    └───→ Capture Buffer (latest RGBA bytes)
-          └─ Every N sec: JPEG-encode via Gst.Buffer → base64 → POST to Router API
+
+**Frame flow:**
+
+```mermaid
+flowchart LR
+    CSI["CSI Camera"] --> GST["GStreamer<br/>nvarguscamerasrc<br/>NVMM zero-copy"]
+    GST -->|"RGBA buffer"| App["appsink"]
+
+    App -->|"QImage wrap<br/>(zero-copy)"| Display["Video Display<br/>(QPainter)"]
+    App -->|"latest RGBA bytes"| Buf["Capture Buffer"]
+
+    Buf -->|"JPEG encode<br/>(Gst.Buffer)"| B64["base64"]
+    B64 -->|"POST /v1/chat"| Router["Router API"]
+
+    Display -->|"YOLO boxes"| YDraw["QPainter overlay<br/>(persistent tracking)"]
+    Display -->|"VLM caption"| CDraw["QPainter overlay<br/>(text bar)"]
 ```
 
 ### 2. Design Decisions
@@ -75,7 +115,7 @@ CSI Camera → GStreamer (nvarguscamerasrc + NVMM zero-copy) → appsink
 | System packages | `bash scripts/03-install-deps.sh` |
 | Python venv + PySide6 | `bash scripts/09-install-pyside6-gui.sh` |
 | Launch GUI | `bash scripts/10-start-pyside6-gui.sh` |
-| Launch headless | `bash scripts/19-start-pyside6-nogui.sh [args...]` |
+| Launch headless | `bash scripts/11-start-pyside6-nogui.sh [args...]` |
 
 > Both launch scripts handle Xorg lifecycle automatically:
 > start Xorg `:0` (if not running), set `DISPLAY=:0`, restart `nvargus-daemon`,
@@ -101,7 +141,7 @@ in `pyside6-gui/`.
 | Control | Type | Default | Description |
 |---------|------|---------|-------------|
 | Model | QComboBox | (first available) | Populated from `GET /v1/models` on startup |
-| Processing Interval | QLineEdit (≥1) | 1 | Seconds between inference requests |
+| Processing Interval | QLineEdit (≥1) | 1000 | Milliseconds between inference requests |
 | Prompt | QTextEdit | `"Describe this image in one sentence."` | Prompt sent to VLM (ignored by YOLO) |
 | Max Tokens | QLineEdit (1–2048) | 512 | Response token limit |
 
@@ -112,12 +152,12 @@ in `pyside6-gui/`.
 │                           │                                          │
 │  Video Source             │    ┌──────────────────────────────────┐  │
 │  Camera ID:  [0 ▼]        │    │   in:29.0 | reason:0ms overlay:… │  │
-│  Res/FPS:    [1920x1080]  │    │   GPU:45% CPU:62% RAM:3.8G VRAM:…│  │
+│  Res/FPS:    [1920x1080@30]│    │   GPU:45% CPU:62% RAM:3.8G VRAM:…│  │
 │                           │    │                                  │  │
 │                           │    │                                  │  │
 │  AI Model                 │    │                                  │  │
 │  Model:      [reason2 ▼]  │    │                                  │  │
-│  Interval:   [1] sec      │    │                                  │  │
+│  Interval:   [1000] ms     │    │                                  │  │
 │  Prompt:                  │    │            Live Video            │  │
 │  ┌──────────────────────┐ │    │                                  │  │
 │  │Describe this image...│ │    │                                  │  │
@@ -194,7 +234,7 @@ Measured on Jetson Orin Nano with IMX219 (DISPLAY=:0 required for full speed):
 | 3280×2464 | 21 | ~18 (steady) | ~8ms | ✓ verified with reason2 (~5s/inf) & yolo (~150ms/inf) |
 
 **Critical:** Without `DISPLAY=:0` and a running Xorg server, Argus falls back to a slow
-capture path (~3 fps regardless of mode). Both `20-` and `21-` start scripts handle this
+capture path (~3 fps regardless of mode). Both `10-` and `11-` start scripts handle this
 automatically. When running `main_nogui.py` directly, you must export `DISPLAY=:0`.
 
 **4K notes:**
@@ -324,7 +364,7 @@ sequenceDiagram
     UI->>UI: wrap QImage → QPainter → QPixmap → display
     deactivate UI
 
-    loop Every N seconds (Interval)
+    loop Every N ms (Interval)
         Timer->>UI: tick
         activate UI
         UI->>Mod: latest RGBA frame + prompt/max_tokens
@@ -361,22 +401,22 @@ sequenceDiagram
 
 A terminal-only variant (`main_nogui.py`) reuses the same GStreamer pipeline and router modules without opening a PySide6 window. Useful for validating the camera pipeline and model Docker containers before running the full GUI.
 
-# 11-start-pyside6-nogui.sh
-
 ### 1. Design
 
 Same core modules as the GUI (`video_source.py`, `router_client.py`, `yolo_overlay.py`, `reason2_overlay.py`, `moondream2_overlay.py`) — only the UI layer (`kiosk_window.py`, `video_display.py`, `control_sidebar.py`) is replaced by a CLI loop:
 
-```
-CLI args → GStreamer pipeline → appsink → RGBA buffer
-                                            │
-    ┌───────────────────────────────────────┘
-    │
-    ├──→ Console log: "Streaming 1920x1080@30 — waiting for interval tick..."
-    │
-    └──→ Every N sec: JPEG-encode → POST /v1/chat/completions
-              │
-              └──→ Response → Overlay Module → print result to stdout
+```mermaid
+flowchart LR
+    CLI["CLI args"] --> GST["GStreamer pipeline"]
+    GST --> App["appsink"]
+    App --> Buf["RGBA buffer"]
+
+    Buf --> Log["Console log"]
+    Buf --> Enc["JPEG-encode"]
+    Enc --> POST["POST /v1/chat/completions"]
+    POST --> Resp["Response"]
+    Resp --> Overlay["Overlay Module"]
+    Overlay --> Print["result to stdout"]
 ```
 
 Ctrl-C triggers `GStreamer pipeline teardown → router_client cleanup → exit`.
@@ -392,7 +432,7 @@ starting the pipeline.
 | `--resolution` | str | `1920x1080` | Must match a mode from `v4l2-ctl --list-formats-ext` |
 | `--framerate` | int | 0 (auto) | Capped to hardware max if exceeded; warning logged |
 | `--model` | str | `reason2` | Must appear in `GET /v1/models` response |
-| `--interval` | int | 1 | Clamped to ≥1 second |
+| `--interval` | int | 1000 | Clamped to ≥1 ms |
 | `--prompt` | str | `"Describe this image in one sentence."` | — |
 | `--max-tokens` | int | 512 | Clamped to 1–2048 |
 
@@ -400,13 +440,13 @@ starting the pipeline.
 
 ```bash
 # Via script (recommended — handles Xorg, DISPLAY, nvargus-daemon)
-bash scripts/09-install-pyside6-gui.sh
+bash scripts/11-start-pyside6-nogui.sh \
     --camera-id 0 --resolution 1280x720@60 \
-    --model reason2 --interval 10 --max-tokens 100
+    --model reason2 --interval 1000 --max-tokens 100
 
 # Direct (requires DISPLAY=:0 + nvargus-daemon restart)
 DISPLAY=:0 QT_QPA_PLATFORM=offscreen python main_nogui.py \
-    --camera-id 0 --resolution 1920x1080 --model yolo --interval 5
+    --camera-id 0 --resolution 1920x1080 --model yolo --interval 5000
 ```
 
 **Validation errors** (descriptive, exits before pipeline starts):
@@ -423,7 +463,7 @@ Parameter validation failed:
 Sample console output:
 
 ```
-17:58:17 [nogui] Streaming 3280x2464@21 — interval 1s, model reason2
+17:58:17 [nogui] Streaming 3280x2464@21 — interval 1000ms, model reason2
 17:58:19 [nogui] POST /v1/chat/completions → reason2 (554 KB)
 17:58:27 [nogui] in:16.3 | reason:7624ms overlay:57ms | GPU:0% CPU:71% RAM:4.2G VRAM:4.2G
 17:58:32 [nogui] in:17.7 | reason:7624ms overlay:57ms | GPU:1% CPU:52% RAM:4.3G VRAM:4.3G
@@ -434,22 +474,47 @@ Sample console output:
 
 ## Troubleshooting
 
-### 1. FPS only ~3 instead of 30/60
+### 1. Argus FPS too low (~3 fps)
 
-**Root cause:** Argus (nvarguscamerasrc) requires an X server for full-speed capture.
-Without `DISPLAY=:0`, it falls back to ~3 fps regardless of sensor mode.
+Argus (nvarguscamerasrc) requires an X server for full-speed capture. Ensure Xorg is running and `DISPLAY=:0` is set. Both `10-start-pyside6-gui.sh` and `11-start-pyside6-nogui.sh` start scripts handle this automatically.
 
-**Fix:** Ensure Xorg is running and `DISPLAY=:0` is set. Both `20-` and `21-` start scripts
-handle this automatically. When running directly:
+Use the command to verify:
 
 ```bash
-export DISPLAY=:0
-sudo systemctl restart nvargus-daemon
+gst-launch-1.0 -v \
+      nvarguscamerasrc ! \
+      'video/x-raw(memory:NVMM),width=1280,height=720,format=NV12' ! \
+      nvvidconv ! \
+      fpsdisplaysink sync=false text-overlay=false video-sink=fakesink
 ```
 
-Verify with: `gst-launch-1.0 nvarguscamerasrc ! ... ! fpsdisplaysink video-sink=fakesink`
+### 2. CMA / NVMM allocation failure
 
-### 2. No video — black screen
+**Symptoms:** `NvMapMemAllocInternalTagged: error 12`, `Failed to create CaptureSession`,
+or camera fails to start after STOP/START cycle, especially at high resolutions.
+
+**Root cause:** Docker model containers and nvarguscamerasrc share the CMA region.
+After extended streaming, CMA becomes fragmented — even if total free memory is sufficient,
+continuous blocks large enough for NVMM buffers are unavailable.
+
+**Fix (cold restart — most reliable):**
+
+```bash
+sudo reboot
+```
+
+**Alternative (without reboot):**
+
+```bash
+sudo docker stop $(sudo docker ps -q) 2>/dev/null
+sudo systemctl stop nvargus-daemon
+sudo sync && echo 3 | sudo tee /proc/sys/vm/drop_caches
+echo 1 | sudo tee /proc/sys/vm/compact_memory
+sudo systemctl start nvargus-daemon
+# Then restart model containers and GUI
+```
+
+### 3. No video — black screen
 
 ```bash
 # Restart nvargus-daemon (CSI cameras only)
@@ -460,10 +525,14 @@ ls /dev/video*
 v4l2-ctl -d /dev/video0 --list-formats-ext
 
 # Test raw GStreamer pipeline
-gst-launch-1.0 nvarguscamerasrc ! 'video/x-raw(memory:NVMM),width=1280,height=720,format=NV12' ! nvvidconv ! ximagesink
+gst-launch-1.0 -v \
+      nvarguscamerasrc ! \
+      'video/x-raw(memory:NVMM),width=1280,height=720,format=NV12' ! \
+      nvvidconv ! \
+      fpsdisplaysink sync=false text-overlay=false video-sink=fakesink
 ```
 
-### 3. "Module 'gi' not found"
+### 4. Module 'gi' not found
 
 ```bash
 # Ensure GObject Introspection is installed at system level
@@ -476,7 +545,7 @@ source pyside6-gui-venv/bin/activate
 pip install pyside6 aiohttp
 ```
 
-### 4. Model dropdown empty
+### 5. Model dropdown empty
 
 ```bash
 # Check router is running
@@ -489,16 +558,15 @@ curl -s http://localhost:8080/v1/models | python3 -m json.tool
 bash scripts/06-start-models.sh
 ```
 
-### 5. Inference returns error
+### 6. Inference returns error
 
 - YOLO response is not valid JSON → check router logs: `sudo docker logs router`
 - Timeout → model container may be OOM: `sudo docker logs reason2`
 - Ensure only one model container is running at a time (Orin Nano has limited CMA memory)
 
-### 6. PySide6 crashes on startup: "Could not load Qt platform plugin"
+### 7. PySide6 crashes on startup: "Could not load Qt platform plugin"
 
 ```bash
 sudo apt install -y libxcb-cursor0
 export QT_QPA_PLATFORM=xcb
 ```
-
