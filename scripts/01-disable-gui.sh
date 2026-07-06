@@ -79,7 +79,7 @@ Requires=openbox.service
 [Service]
 Type=simple
 Environment=DISPLAY=:0
-ExecStart=/bin/sh -c 'sleep 2; H=\$(xrandr 2>/dev/null | grep \"*\" | head -1 | awk \"{print \\\$1}\" | cut -dx -f2); test -z \"\$H\" && H=1080; exec xterm -fullscreen -fa Monospace -fs \$((H/60)) -bg black -fg white'
+ExecStart=/bin/sh -c 'sleep 2; H=\$(xrandr 2>/dev/null | grep \"*\" | head -1 | awk \"{print \\\$1}\" | cut -dx -f2); test -z \"\$H\" && H=1080; exec xterm -fullscreen -fa Monospace -fs \$((H/30)) -bg black -fg white'
 Restart=no
 User=${USER}
 

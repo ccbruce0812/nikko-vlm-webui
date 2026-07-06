@@ -1,53 +1,50 @@
 #!/bin/bash
 # ============================================================
-# 10-start-pyside6-gui.sh
-# Starts Xorg (if needed), nvargus-daemon, then launches GUI.
-# Cleans up Xorg on exit only if it was started by this script.
+# 17-start-pyside6-main.sh
+# Launch pyside6-main GUI (Xorg + openbox, same env as pyside6-gui).
 #
 # Usage:
-#   bash scripts/10-start-pyside6-gui.sh
+#   bash scripts/17-start-pyside6-main.sh
 # ============================================================
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-VENV_DIR="${PROJECT_DIR}/pyside6-gui-venv"
-GUI_DIR="${PROJECT_DIR}/pyside6-gui"
+VENV_DIR="${PROJECT_DIR}/pyside6-main-venv"
+MAIN_DIR="${PROJECT_DIR}/pyside6-main"
 
 # ---- help ----
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-    echo "Usage: bash scripts/10-start-pyside6-gui.sh"
+    echo "Usage: bash scripts/17-start-pyside6-main.sh"
     echo ""
-    echo "  Launch the kiosk GUI (PySide6 fullscreen window)."
-    echo "  Handles Xorg/openbox lifecycle, nvargus-daemon, DISPLAY automatically."
+    echo "  Launch the pyside6-main GUI (windowed, with title bar)."
+    echo "  Requires Xorg + openbox and Router API."
     echo ""
-    echo "  No CLI arguments — all configuration is done in the GUI sidebar."
+    echo "  No CLI arguments — configure via the Control Panel and AI Panel."
     echo ""
-    echo "  Requires: xorg.service, openbox.service, pyside6-gui-venv/"
+    echo "  Requires: pyside6-main-venv/"
     exit 0
 fi
 
 if [ ! -f "${VENV_DIR}/bin/activate" ]; then
     echo "[ERROR] venv not found at ${VENV_DIR}"
-    echo "        Run: bash scripts/09-install-pyside6-gui.sh"
+    echo "        Run: bash scripts/16-install-pyside6-main.sh"
     exit 1
 fi
 
 # ---- Already running? ----
-if pgrep -f 'pyside6-gui/main.py' >/dev/null 2>&1; then
-    echo "[ERROR] Kiosk GUI is already running."
-    echo "        Stop it first: Alt+Q or kill \$\(pgrep -f 'pyside6-gui/main.py'\)"
+if pgrep -f 'pyside6-main/main.py' >/dev/null 2>&1; then
+    echo "[ERROR] pyside6-main is already running."
+    echo "        Close the existing window first."
     exit 1
 fi
 
-# ---- Xorg (required by nvarguscamerasrc) ----
+# ---- Xorg + DISPLAY ----
 if ! pgrep -x Xorg >/dev/null 2>&1; then
     echo "[ERROR] Xorg is not running."
     echo "        Run: sudo systemctl start xorg"
-    echo "        Or:  bash scripts/01-disable-gui.sh (one-time setup)"
     exit 1
 fi
-
 export DISPLAY=:0
 
 # ---- Argus daemon ----
@@ -82,5 +79,6 @@ fi
 # ---- Launch ----
 export QT_QPA_PLATFORM=xcb
 source "${VENV_DIR}/bin/activate"
-cd "${GUI_DIR}"
+cd "${MAIN_DIR}"
+echo "[INFO] Starting pyside6-main GUI..."
 python main.py
