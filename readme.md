@@ -221,8 +221,8 @@ Starts Router (always), then interactively pick a model:
 - Each VLM shows its default parameters (GPU layers, threads, batch, ctx, flash-attn) — press Enter to keep defaults or type new values
 - Automatically handles power mode, nvargus-daemon restart, and memory tuning
 
-> 📄 Script - Start: `scripts/06-start-models.sh`
-> 📄 Script - Stop: `scripts/07-stop-models.sh`
+> 📄 Start: `scripts/06-start-models.sh`
+> 📄 Stop: `scripts/07-stop-models.sh`
 
 ### 2. Quick Test
 

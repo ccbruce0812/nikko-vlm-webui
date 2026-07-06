@@ -8,7 +8,7 @@ For the browser-based WebUI alternative, see [live-vlm-webui.md](live-vlm-webui.
 
 Single-window kiosk GUI for live CSI camera streaming with router-based multi-model
 VLM inference. All AI inference is delegated to Docker containers via the Router API.
-A headless variant (`main_nogui.py`) is also provided for pipeline validation.
+A headless variant is also provided for pipeline validation.
 
 ### 1. Architecture
 
@@ -73,6 +73,22 @@ flowchart TB
     SM -- "read_stats()" --> Main
 ```
 
+**Headless mode:**
+
+```mermaid
+flowchart LR
+    CLI["CLI args"] --> GST["GStreamer pipeline"]
+    GST --> App["appsink"]
+    App --> Buf["RGBA buffer"]
+
+    Buf --> Log["Console log"]
+    Buf --> Enc["JPEG-encode"]
+    Enc --> POST["POST /v1/chat/completions"]
+    POST --> Resp["Response"]
+    Resp --> Overlay["Overlay Module"]
+    Overlay --> Print["result to stdout"]
+```
+
 **Frame flow:**
 
 ```mermaid
@@ -101,29 +117,45 @@ flowchart LR
 | **System monitor** | /proc + /sys (GPU/CPU/RAM/VRAM) top-right OSD |
 | **Camera source** | CSI only: `nvarguscamerasrc` with NVMM zero-copy |
 
-### 3. Hardware Requirements
-
-- **Xorg must be running** with `DISPLAY=:0` — Argus requires a display server for full-speed camera output
-- Running Docker containers: **Router** (required) + at least one model container
-
-> See [readme.md](readme.md) for Docker backend setup, model download, and container build.
-
 ## Install & Launch
 
-| Step | Script |
-|------|--------|
-| System packages | `bash scripts/03-install-deps.sh` |
-| Python venv + PySide6 | `bash scripts/09-install-pyside6-gui.sh` |
-| Launch GUI | `bash scripts/10-start-pyside6-gui.sh` |
-| Launch headless | `bash scripts/11-start-pyside6-nogui.sh [args...]` |
+### 1. Install
 
-> Both launch scripts handle Xorg lifecycle automatically:
-> start Xorg `:0` (if not running), set `DISPLAY=:0`, restart `nvargus-daemon`,
-> then clean up on exit (only if Xorg was started by the script).
-> The headless script also sets `QT_QPA_PLATFORM=offscreen`.
+Run the setup scripts in order (`01-disable-gui.sh` through `05-build-all.sh`) —
+this configures Xorg + openbox (enables full-speed Argus), CSI camera, MAXN power mode,
+memory tuning, downloads models, and builds all Docker images. The Python venv is
+created by `09-install-pyside6-gui.sh`.
 
-Venv is created at `pyside6-gui-venv/` in the project root.  The GUI source lives
-in `pyside6-gui/`.
+> 📄 Script: `scripts/09-install-pyside6-gui.sh`
+
+### 2. Launch
+
+```bash
+bash scripts/10-start-pyside6-gui.sh
+```
+
+- Handles Xorg/openbox lifecycle, `nvargus-daemon`, and `DISPLAY=:0` automatically
+- Kiosk fullscreen mode (undecorated window managed by openbox RC)
+
+```bash
+bash scripts/11-start-pyside6-nogui.sh [OPTIONS]
+```
+
+- Handles Xorg lifecycle, sets `QT_QPA_PLATFORM=offscreen`
+- Headless CLI mode — same pipeline, no GUI window
+
+| Argument | Type | Default | Validation |
+|----------|------|---------|-------------|
+| `--camera-id` | int | 0 | Must exist at `/dev/video{id}` |
+| `--resolution` | str | `1920x1080` | Must match a mode from `v4l2-ctl --list-formats-ext` |
+| `--framerate` | int | 0 (auto) | Capped to hardware max if exceeded; warning logged |
+| `--model` | str | `reason2` | Must appear in `GET /v1/models` response |
+| `--interval` | int | 1000 | Clamped to ≥1 ms |
+| `--prompt` | str | `"Describe this image in one sentence."` | — |
+| `--max-tokens` | int | 512 | Clamped to 1–2048 |
+
+> 📄 GUI: `scripts/10-start-pyside6-gui.sh`
+> 📄 Headless: `scripts/11-start-pyside6-nogui.sh`
 
 ## UI Design
 
@@ -145,29 +177,29 @@ in `pyside6-gui/`.
 | Prompt | QTextEdit | `"Describe this image in one sentence."` | Prompt sent to VLM (ignored by YOLO) |
 | Max Tokens | QLineEdit (1–2048) | 512 | Response token limit |
 
-### 3. Start / Stop
+### 3. Control
 
 ```
-┌─ Left Sidebar (1/6) ──────┬─ Video Display (5/6) ────────────────────┐
-│                           │                                          │
-│  Video Source             │    ┌──────────────────────────────────┐  │
-│  Camera ID:  [0 ▼]        │    │   in:29.0 | reason:0ms overlay:… │  │
+┌─ Left Sidebar (1/6) ───────┬─ Video Display (5/6) ────────────────────┐
+│                            │                                          │
+│  Video Source              │    ┌──────────────────────────────────┐  │
+│  Camera ID:  [0 ▼]         │    │   in:29.0 | reason:0ms overlay:… │  │
 │  Res/FPS:    [1920x1080@30]│    │   GPU:45% CPU:62% RAM:3.8G VRAM:…│  │
-│                           │    │                                  │  │
-│                           │    │                                  │  │
-│  AI Model                 │    │                                  │  │
-│  Model:      [reason2 ▼]  │    │                                  │  │
+│                            │    │                                  │  │
+│                            │    │                                  │  │
+│  AI Model                  │    │                                  │  │
+│  Model:      [reason2 ▼]   │    │                                  │  │
 │  Interval:   [1000] ms     │    │                                  │  │
-│  Prompt:                  │    │            Live Video            │  │
-│  ┌──────────────────────┐ │    │                                  │  │
-│  │Describe this image...│ │    │                                  │  │
-│  │                      │ │    │ ┌──────────────────────────────┐ │  │
-│  └──────────────────────┘ │    │ │ person 0.87 ┌────────┐       │ │  │
-│         Max Tokens: [512] │    │ │             │  car   │       │ │  │
-│ [▶ START]  [✕ QUIT]       │    │ └──────────────────────────────┘ │  │
-│                           │    └──────────────────────────────────┘  │
-│                           │                                          │
-└───────────────────────────┴──────────────────────────────────────────┘
+│  Prompt:                   │    │            Live Video            │  │
+│  ┌──────────────────────┐  │    │                                  │  │
+│  │Describe this image...│  │    │                                  │  │
+│  │                      │  │    │ ┌──────────────────────────────┐ │  │
+│  └──────────────────────┘  │    │ │ person 0.87                  │ │  │
+│  Max Tokens: [512]         │    │ │                              │ │  │
+│       [▶ START]  [✕ QUIT] │    │ └──────────────────────────────┘ │  │
+│                            │    └──────────────────────────────────┘  │
+│                            │                                          │
+└────────────────────────────┴──────────────────────────────────────────┘
 ```
 
 1. Select camera and resolution.
@@ -275,7 +307,13 @@ YOLO handles "No objects detected." responses gracefully (no overlay drawn, no w
 Both GUI (OSD top-right) and headless (console) use the same format, updated every 5 seconds:
 
 ```
-in:58.0 | reason:4800ms overlay:5ms | GPU:45% CPU:50% RAM:4.1G VRAM:4.1G
+17:58:17 [nogui] Streaming 3280x2464@21 — interval 1000ms, model reason2
+17:58:19 [nogui] POST /v1/chat/completions → reason2 (554 KB)
+17:58:27 [nogui] in:16.3 | reason:7624ms overlay:57ms | GPU:0% CPU:71% RAM:4.2G VRAM:4.2G
+17:58:32 [nogui] in:17.7 | reason:7624ms overlay:57ms | GPU:1% CPU:52% RAM:4.3G VRAM:4.3G
+17:58:37 [nogui] in:17.5 | reason:7624ms overlay:57ms | GPU:0% CPU:77% RAM:4.3G VRAM:4.3G
+^C
+17:58:40 [nogui] Shutting down.
 ```
 
 | Field | Source | Description |
@@ -396,81 +434,6 @@ sequenceDiagram
 - At each interval tick, the latest frame is captured and sent to the Router asynchronously via `aiohttp` in a background `QThread`.
 - When the response arrives, the overlay module draws on the **current live frame** (not the original captured frame) — the display always shows up-to-date video.
 - If a new interval tick fires before the previous response arrives, the tick is skipped (`_pending` guard) — no queue build-up.
-
-## Headless Validation Mode
-
-A terminal-only variant (`main_nogui.py`) reuses the same GStreamer pipeline and router modules without opening a PySide6 window. Useful for validating the camera pipeline and model Docker containers before running the full GUI.
-
-### 1. Design
-
-Same core modules as the GUI (`video_source.py`, `router_client.py`, `yolo_overlay.py`, `reason2_overlay.py`, `moondream2_overlay.py`) — only the UI layer (`kiosk_window.py`, `video_display.py`, `control_sidebar.py`) is replaced by a CLI loop:
-
-```mermaid
-flowchart LR
-    CLI["CLI args"] --> GST["GStreamer pipeline"]
-    GST --> App["appsink"]
-    App --> Buf["RGBA buffer"]
-
-    Buf --> Log["Console log"]
-    Buf --> Enc["JPEG-encode"]
-    Enc --> POST["POST /v1/chat/completions"]
-    POST --> Resp["Response"]
-    Resp --> Overlay["Overlay Module"]
-    Overlay --> Print["result to stdout"]
-```
-
-Ctrl-C triggers `GStreamer pipeline teardown → router_client cleanup → exit`.
-
-### 2. CLI Arguments
-
-All arguments are validated at startup. Invalid values produce descriptive errors and exit before
-starting the pipeline.
-
-| Argument | Type | Default | Validation |
-|----------|------|---------|-------------|
-| `--camera-id` | int | 0 | Must exist at `/dev/video{id}` |
-| `--resolution` | str | `1920x1080` | Must match a mode from `v4l2-ctl --list-formats-ext` |
-| `--framerate` | int | 0 (auto) | Capped to hardware max if exceeded; warning logged |
-| `--model` | str | `reason2` | Must appear in `GET /v1/models` response |
-| `--interval` | int | 1000 | Clamped to ≥1 ms |
-| `--prompt` | str | `"Describe this image in one sentence."` | — |
-| `--max-tokens` | int | 512 | Clamped to 1–2048 |
-
-### 3. Usage
-
-```bash
-# Via script (recommended — handles Xorg, DISPLAY, nvargus-daemon)
-bash scripts/11-start-pyside6-nogui.sh \
-    --camera-id 0 --resolution 1280x720@60 \
-    --model reason2 --interval 1000 --max-tokens 100
-
-# Direct (requires DISPLAY=:0 + nvargus-daemon restart)
-DISPLAY=:0 QT_QPA_PLATFORM=offscreen python main_nogui.py \
-    --camera-id 0 --resolution 1920x1080 --model yolo --interval 5000
-```
-
-**Validation errors** (descriptive, exits before pipeline starts):
-
-```
-Parameter validation failed:
-  • Camera 99 not found (/dev/video99)
-  • Resolution 100x100 not supported. Available: 3280x2464@21, ...
-  • max-tokens=9999 out of range (1–2048)
-  • Router reports no models running. Start a model container (e.g. reason2).
-  • Cannot reach router at localhost:8080 — Connection refused
-```
-
-Sample console output:
-
-```
-17:58:17 [nogui] Streaming 3280x2464@21 — interval 1000ms, model reason2
-17:58:19 [nogui] POST /v1/chat/completions → reason2 (554 KB)
-17:58:27 [nogui] in:16.3 | reason:7624ms overlay:57ms | GPU:0% CPU:71% RAM:4.2G VRAM:4.2G
-17:58:32 [nogui] in:17.7 | reason:7624ms overlay:57ms | GPU:1% CPU:52% RAM:4.3G VRAM:4.3G
-17:58:37 [nogui] in:17.5 | reason:7624ms overlay:57ms | GPU:0% CPU:77% RAM:4.3G VRAM:4.3G
-^C
-17:58:40 [nogui] Shutting down.
-```
 
 ## Troubleshooting
 

@@ -44,16 +44,16 @@ nvarguscamerasrc camera-id=0
 | Mux | `h264parse` | H.264 stream formatting |
 | Payload | `rtph264pay` | RTP packetization for RTSP delivery |
 
-## Install
+## Install & Launch
+
+### 1. Install
 
 Run the setup scripts in order (`01-disable-gui.sh` through `05-build-all.sh`) —
 this configures Xorg + openbox (enables full-speed Argus), CSI camera, MAXN power mode,
 memory tuning, downloads models, and builds all Docker images. The `rtsp-server` image
 is built as part of `05-build-all.sh`.
 
-## Start Service
-
-### 1. Start
+### 2. Launch
 
 ```bash
 bash scripts/12-start-rtsp-server.sh [OPTIONS]
@@ -69,16 +69,10 @@ Checks Xorg is running, restarts `nvargus-daemon`, then launches the RTSP contai
 | `--path PATH` | `/stream` | RTSP mount path |
 | `--help, -h` | — | Show usage |
 
-Example:
+> 📄 Start: `scripts/12-start-rtsp-server.sh`
+> 📄 Stop: `scripts/13-stop-rtsp-server.sh`
 
-```bash
-bash scripts/12-start-rtsp-server.sh --resolution 1920x1080@30 --port 8555
-```
-
-> 📄 Script - Start: `scripts/12-start-rtsp-server.sh`
-> 📄 Script - Stop: `scripts/13-stop-rtsp-server.sh`
-
-### 2. Access
+### 3. Access
 
 ```
 rtsp://<jetson-ip>:8554/stream

@@ -1,8 +1,7 @@
 # Live VLM WebUI
 
-> This document covers the live-vlm-webui Docker container.
-
-> For Docker backend, model setup, and system configuration see [readme.md](readme.md).
+This document covers the live-vlm-webui Docker container.
+For Docker backend, model setup, and system configuration see [readme.md](readme.md).
 
 ## Overview
 
@@ -43,32 +42,17 @@ The WebUI streams the RTSP feed to the browser as WebRTC.  When the user submits
 prompt, the WebUI captures the current frame, sends it to the Router API, and displays
 the inference result as an overlay.
 
-## Requirements
-
-- RTSP server running (`rtsp-server` container, see [rtsp-server.md](rtsp-server.md))
-- Router running (`router` container on `vlm-net`)
-- At least one model container running (reason2 / moondream2 / yolo)
-- Docker image built: `sudo docker build -t live-vlm-webui live-vlm-webui/`
-
-## Build
-
-```bash
-sudo docker build -t live-vlm-webui live-vlm-webui/
-```
-
-> 📄 Script: `scripts/05-build-all.sh` (builds all containers)
-
-## Dockerfile Customizations
+### 3. Dockerfile Customizations
 
 The Dockerfile applies two changes on top of the official image:
 
-### 1. GPU Monitor Patch
+- GPU Monitor Patch
 
 `patch_gpu_monitor.py` fixes GPU utilization reporting for Jetson:
 - Adds `/sys/devices/platform/*/gpu.0/load` fallback when jtop returns 0
 - Skips nvidia-smi fallback on Jetson (VRAM=0 is normal with unified memory)
 
-### 2. API Defaults
+- API Defaults
 
 Pre-configured environment variables point to the local Router:
 
@@ -77,41 +61,33 @@ Pre-configured environment variables point to the local Router:
 | `LIVE_VLM_API_BASE` | `http://localhost:8080/v1` |
 | `LIVE_VLM_DEFAULT_MODEL` | `reason2` |
 
-## Start / Stop
+## Install & Launch
 
-| Action | Script |
-|--------|--------|
-| Start | `bash scripts/14-start-live-vlm-webui.sh [OPTIONS]` |
-| Stop | `bash scripts/15-stop-live-vlm-webui.sh` |
+### 1. Install
+
+Run the setup scripts in order (`01-disable-gui.sh` through `05-build-all.sh`) —
+this configures Xorg + openbox (enables full-speed Argus), CSI camera, MAXN power mode,
+memory tuning, downloads models, and builds all Docker images. The `live-vlm-webui` image
+is built as part of `05-build-all.sh`.
+
+### 2. Launch
+
+```bash
+bash scripts/14-start-live-vlm-webui.sh [OPTIONS]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--port N` | 8554 | WebUI listening port (default: 8090) |
+| `--help, -h` | — | Show usage |
 
 The start script checks that no existing instance is running, removes any stale
 container, then launches with the specified port (default 8090).
 
-### CLI Options (20-start)
+> 📄 Start: `scripts/14-start-live-vlm-webui.sh`
+> 📄 Stop: `scripts/15-stop-live-vlm-webui.sh`
 
-```
-  --port N             WebUI listening port (default: 8090)
-  --help, -h           show usage
-```
-
-Example:
-
-```bash
-bash scripts/14-start-live-vlm-webui.sh --port 8091
-```
-
-### Manual docker run
-
-```bash
-sudo docker run -d --name live-vlm-webui \
-    --network host \
-    --runtime nvidia \
-    --privileged \
-    -v /sys:/sys:ro \
-    live-vlm-webui
-```
-
-## Access
+## 3. Access
 
 ```
 http://<jetson-ip>:8090
@@ -128,35 +104,13 @@ client browser are on the same network (no NAT traversal).
 
 ## Troubleshooting
 
-### 1. WebUI starts but shows black screen
-
-RTSP server is not running or started after WebUI.  The WebUI tries 5 reconnection
-attempts then gives up.  Start RTSP server first, then WebUI:
-
-```bash
-bash scripts/12-start-rtsp-server.sh
-sudo docker restart live-vlm-webui
-```
-
-### 2. GPU monitor always shows 0%
+### 1. GPU monitor always shows 0%
 
 Normal on Jetson with unified memory. The `patch_gpu_monitor.py` fix is already
 applied in the Dockerfile — GPU load is read from sysfs.  If still 0%, the container
 may have been built without the patch.
 
-### 3. WebRTC connection fails (ICE disconnected)
+### 2. WebRTC connection fails (ICE disconnected)
 
 WebUI uses `--network host` for direct UDP.  If the browser is behind NAT or a
 different subnet, WebRTC may fail.  Ensure browser and Jetson are on the same LAN.
-
-### 4. Prompt submitted but no response / error
-
-Check Router and model container logs:
-
-```bash
-sudo docker logs router
-sudo docker logs reason2
-```
-
-Ensure the model container is running and registered with the Router
-(`curl http://localhost:8080/v1/models`).
