@@ -296,7 +296,7 @@ class HeadlessRunner:
         if self._latest_data is None:
             return None
         return QImage(self._latest_data, self._latest_w, self._latest_h,
-                      self._latest_w * 4, QImage.Format_RGBA8888)
+                      self._latest_w * 4, QImage.Format_RGB32)
 
     # -----------------------------------------------------------------
     #  system monitor (no jetson-stats)

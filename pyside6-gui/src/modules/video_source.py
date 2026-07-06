@@ -32,16 +32,19 @@ class VideoSource(QThread):
     status_message = Signal(str)
 
     def __init__(self, camera_id=0, width=1920, height=1080, framerate=0,
-                 enable_raw_queue=False):
+                 enable_raw_queue=False, output_width=0, output_height=0):
         super().__init__()
         self.camera_id = camera_id
         self.width = width
         self.height = height
         self.framerate = framerate
+        self.out_w = output_width
+        self.out_h = output_height
         self._raw_queue = queue.Queue(maxsize=32) if enable_raw_queue else None
         self._pipeline = None
         self._loop = None
-        self._row_bytes = width * 4
+        self._actual_w = 0   # set from first buffer caps
+        self._actual_h = 0
 
     # ----- device enumeration -----
 
@@ -143,8 +146,13 @@ class VideoSource(QThread):
             f"video/x-raw(memory:NVMM),width={self.width},height={self.height},"
             f"format=NV12,framerate={fps}/1 ! "
             f"nvvidconv flip-method=0 ! "
-            f"video/x-raw,format=RGBA ! "
-            f"appsink name=sink emit-signals=true max-buffers=1 drop=true sync=false"
+            f"video/x-raw,format=BGRx"
+        )
+        if self.out_w > 0 and self.out_h > 0:
+            pipeline_str += f",width={self.out_w},height={self.out_h}"
+        pipeline_str += (
+            f" ! appsink name=sink emit-signals=true"
+            f" max-buffers=1 drop=true sync=false"
         )
         logger.info("GStreamer pipeline: %s", pipeline_str)
         return pipeline_str
@@ -157,20 +165,26 @@ class VideoSource(QThread):
         if buf is None:
             return Gst.FlowReturn.OK
 
+        # Extract actual dimensions from caps (stride-safe)
+        caps = sample.get_caps()
+        if caps:
+            s = caps.get_structure(0)
+            self._actual_w = s.get_int("width")[1]
+            self._actual_h = s.get_int("height")[1]
+
         ok, map_info = buf.map(Gst.MapFlags.READ)
         if not ok:
             return Gst.FlowReturn.OK
 
         try:
             data = bytes(map_info.data)
-            # Fast path: raw queue (headless mode, no Qt signal overhead)
             if self._raw_queue is not None:
                 try:
-                    self._raw_queue.put_nowait((data, self.width, self.height))
+                    self._raw_queue.put_nowait((data, self._actual_w, self._actual_h))
                 except queue.Full:
-                    pass  # drop frame if consumer is behind
+                    pass
             else:
-                self.frame_ready.emit(data, self.width, self.height)
+                self.frame_ready.emit(data, self._actual_w, self._actual_h)
         finally:
             buf.unmap(map_info)
 

@@ -117,8 +117,8 @@ class VideoDisplay(QWidget):
         if not elided:
             elided = text
 
-        painter.fillRect(bx, by, bar_w, bar_h, QColor(0, 0, 0, 160))
-        painter.setPen(Qt.white)
+        painter.fillRect(bx, by, bar_w, bar_h, QColor(0, 0, 0))
+        painter.setPen(QColor("#ddd"))
         painter.drawText(bx + 6, by + 4, text_w, bar_h - 4,
                          Qt.AlignLeft | Qt.AlignTop | Qt.TextWordWrap, elided)
 
@@ -149,7 +149,7 @@ class VideoDisplay(QWidget):
         bx = r.x() + r.width() - bar_w - gap_x
         by = r.y() + gap_y
 
-        painter.fillRect(bx, by, bar_w, bar_h, QColor(0, 0, 0, 140))
+        painter.fillRect(bx, by, bar_w, bar_h, QColor(0, 0, 0))
         painter.setPen(Qt.white)
         painter.drawText(bx + 3, by, bar_w - 6, bar_h,
                          Qt.AlignLeft | Qt.AlignVCenter, text)

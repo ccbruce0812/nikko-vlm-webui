@@ -6,7 +6,7 @@ import base64
 import logging
 import time
 
-from PySide6.QtWidgets import QMainWindow, QHBoxLayout, QWidget, QPushButton, QSizePolicy
+from PySide6.QtWidgets import QMainWindow, QHBoxLayout, QWidget, QPushButton, QSizePolicy, QApplication
 from PySide6.QtCore import QTimer, Slot, QThread, QBuffer, Qt
 from PySide6.QtGui import QImage, QShortcut, QKeySequence
 
@@ -131,22 +131,33 @@ class KioskWindow(QMainWindow):
         params["fps"] = fps
         self._params = params
 
+        # Output resolution: match video display area, aligned to 16
+        screen = QApplication.primaryScreen()
+        if screen:
+            sw = screen.size().width()
+            out_w = (int(sw * 3 / 5) // 16) * 16
+            out_h = (int(out_w * 9 / 16) // 16) * 16
+        else:
+            out_w = out_h = 0
+
         # Reset all counters
         self._input_count = 0
+        self._output_count = 0
         self._fps_t0 = time.time()
         self._prepare_ms = 0.0
         self._reason_ms = 0.0
         self._overlay_ms = 0.0
         self._infer_count = 0
-        self._yolo_response = None
 
-        self._video_source = VideoSource(camera_id, width, height)
-        self._video_source.frame_ready.connect(self._on_frame)
-        self._video_source.status_message.connect(self._on_video_status)
-        self._video_source.start()
-
-        self._display.set_res_fps(f"{width}x{height}")
+        self._display.set_res_fps(f"{width}x{height}@{fps}")
         self._sidebar.set_streaming_state(True)
+
+        self._video_source = VideoSource(camera_id, width, height, fps,
+                                         output_width=out_w, output_height=out_h)
+        self._video_source.frame_ready.connect(self._on_frame)
+        self._video_source.status_message.connect(
+            lambda msg: logger.info("Video: %s", msg))
+        self._video_source.start()
 
         self._mon_timer.start(5000)
 
@@ -229,7 +240,7 @@ class KioskWindow(QMainWindow):
     def _on_frame(self, data, w, h):
         if self._video_source is None:
             return  # stopped, ignore late frame
-        qimage = QImage(data, w, h, w * 4, QImage.Format_RGBA8888)
+        qimage = QImage(data, w, h, w * 4, QImage.Format_RGB32)
         self._latest_frame = qimage
         self._input_count += 1
 
