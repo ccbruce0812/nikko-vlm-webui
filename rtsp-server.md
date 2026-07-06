@@ -1,7 +1,7 @@
 # RTSP Server
 
-> This document covers the CSI camera RTSP streaming server.
-> For Docker backend, model setup, and system configuration see [readme.md](readme.md).
+This document covers the CSI camera RTSP streaming server.
+For Docker backend, model setup, and system configuration see [readme.md](readme.md).
 
 ## Overview
 
@@ -24,7 +24,7 @@ flowchart LR
     RTSP --> Client
 ```
 
-## 2. Pipeline
+### 2. Pipeline
 
 ```
 nvarguscamerasrc camera-id=0
@@ -44,67 +44,41 @@ nvarguscamerasrc camera-id=0
 | Mux | `h264parse` | H.264 stream formatting |
 | Payload | `rtph264pay` | RTP packetization for RTSP delivery |
 
-## Requirements
+## Install
 
-- Xorg running (`xorg.service`, see [readme.md §5](readme.md))
-- `DISPLAY=:0` set
-- `nvargus-daemon` restarted
-- CSI camera configured via `jetson-io.py` (IMX219-A, CAM0)
-- Docker image built: `sudo docker build -t rtsp-server rtsp-server/`
+Run the setup scripts in order (`01-disable-gui.sh` through `05-build-all.sh`) —
+this configures Xorg + openbox (enables full-speed Argus), CSI camera, MAXN power mode,
+memory tuning, downloads models, and builds all Docker images. The `rtsp-server` image
+is built as part of `05-build-all.sh`.
 
-## Start / Stop
+## Start Service
 
-| Action | Script |
-|--------|--------|
-| Start | `bash scripts/20-start-rtsp-server.sh [OPTIONS]` |
-| Stop | `bash scripts/20-stop-rtsp-server.sh` |
+### 1. Start
 
-Both scripts check that Xorg is running before proceeding, set `DISPLAY=:0`,
-and restart `nvargus-daemon`.  The stop script only removes the Docker container
-— Xorg remains managed by systemd (`xorg.service`).
-
-### 1. CLI Options (19-start)
-
+```bash
+bash scripts/12-start-rtsp-server.sh [OPTIONS]
 ```
-  --camera-id N        CSI camera sensor (default: 0)
-  --resolution WxH@FPS  e.g. 1920x1080@30 (default: 1920x1080@30)
-  --port N             RTSP listening port (default: 8554)
-  --path PATH          RTSP mount path (default: /stream)
-  --help, -h           show usage
-```
+
+Checks Xorg is running, restarts `nvargus-daemon`, then launches the RTSP container.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--camera-id N` | 0 | CSI camera sensor |
+| `--resolution WxH@FPS` | `1920x1080@30` | Stream resolution |
+| `--port N` | 8554 | RTSP listening port |
+| `--path PATH` | `/stream` | RTSP mount path |
+| `--help, -h` | — | Show usage |
 
 Example:
 
 ```bash
-bash scripts/20-start-rtsp-server.sh --resolution 1920x1080@30 --port 8555
+bash scripts/12-start-rtsp-server.sh --resolution 1920x1080@30 --port 8555
 ```
 
-### 2. Manual docker run
+> 📄 Script - Start: `scripts/12-start-rtsp-server.sh`
+> 📄 Script - Stop: `scripts/13-stop-rtsp-server.sh`
 
-```bash
-sudo docker run -d \
-    --name rtsp-server \
-    --runtime nvidia \
-    --network host \
-    --device=/dev/video0 \
-    --device=/dev/media0 \
-    -v /tmp:/tmp \
-    -e WIDTH=1920 -e HEIGHT=1080 -e FPS=30 \
-    rtsp-server
-```
-
-### 3. Environment variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `WIDTH` | 1280 | Frame width |
-| `HEIGHT` | 720 | Frame height |
-| `FPS` | 30 | Target framerate |
-| `RTSP_PORT` | 8554 | RTSP listening port |
-| `RTSP_PATH` | /stream | RTSP mount path |
-| `SENSOR_ID` | 0 | CSI camera sensor (0 = CAM0) |
-
-## Access
+### 2. Access
 
 ```
 rtsp://<jetson-ip>:8554/stream
@@ -113,8 +87,6 @@ rtsp://<jetson-ip>:8554/stream
 Local test:
 
 ```bash
-ffplay rtsp://localhost:8554/stream
-# or
 gst-launch-1.0 rtspsrc location=rtsp://localhost:8554/stream latency=0 \
     ! rtph264depay ! h264parse ! avdec_h264 ! autovideosink
 ```
@@ -123,22 +95,10 @@ gst-launch-1.0 rtspsrc location=rtsp://localhost:8554/stream latency=0 \
 
 ### 1. RTSP stream shows ~3 fps instead of 30
 
-Xorg is not running. Verify:
+Same Argus root cause as the GUI — see [pyside6-gui.md §1](pyside6-gui.md).
+Xorg must be running with `DISPLAY=:0` for full-speed camera capture.
 
-```bash
-pgrep Xorg                     # should show PID
-echo $DISPLAY                  # should be :0
-sudo systemctl restart nvargus-daemon
-```
+### 2. CMA / NVMM allocation failure
 
-### 2. Connection refused from live-vlm-webui
-
-`live-vlm-webui` uses `--network host` and connects to `localhost:8554`.
-Ensure RTSP server is started **before** live-vlm-webui.  If WebUI was started
-first, it will permanently give up after 5 reconnection attempts — restart
-WebUI after RTSP is running:
-
-```bash
-sudo docker restart live-vlm-webui
-```
+Same root cause as the GUI pipeline — see [pyside6-gui.md §2](pyside6-gui.md).
 
