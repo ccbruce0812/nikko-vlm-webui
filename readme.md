@@ -12,6 +12,7 @@ flowchart LR
         Browser["Browser"]
         Kiosk["pyside6-gui<br/>(Kiosk GUI)"]
         Nogui["pyside6-nogui<br/>(Headless)"]
+        Desktop["pyside6-main<br/>(Desktop GUI)"]
     end
 
     subgraph Infra["Infrastructure"]
@@ -32,24 +33,38 @@ flowchart LR
     CSI --> RTSP --> WebUI
     CSI --> Kiosk
     CSI --> Nogui
+    CSI --> Desktop
     Kiosk --> Router
     Nogui --> Router
+    Desktop --> Router
     Router --> Moon
     Router --> Cosmos
     Router --> YOLO
 ```
 
-### 2. Kiosk GUI & Headless Tool
+### 2. GUI Tools
 
-A PySide6 kiosk GUI and headless pipeline validation tool are provided in `pyside6-gui/`.
-See [pyside6-gui.md](pyside6-gui.md) for setup, UI design, and usage.
+Two GUI frontends, both using the same Router API + Docker model backend:
 
-### 3. RTSP Server
+| GUI | Mode | Description | Docs |
+|-----|------|-------------|------|
+| pyside6-gui | Kiosk (fullscreen) | Fullscreen control panel, OSD overlay, sidebar control | [pyside6-gui.md](pyside6-gui.md) |
+| pyside6-main | Desktop (windowed) | Windowed control panel + AI popup, YOLO auto-detection | [pyside6-main.md](pyside6-main.md) |
+
+### 3. Web UI Tools
+
+Browser-based frontend with WebRTC live streaming:
+
+| Tool | Description | Docs |
+|------|-------------|------|
+| live-vlm-webui | WebRTC browser UI, RTSP relay to CSI camera | [live-vlm-webui.md](live-vlm-webui.md) |
+
+### 4. RTSP Server
 
 CSI camera RTSP streaming via nvarguscamerasrc. See [rtsp-server.md](rtsp-server.md)
 for pipeline, configuration, and troubleshooting.
 
-### 4. Hardware Requirements
+### 5. Hardware Requirements
 
 - **NVIDIA Jetson Orin Nano** (JetPack 6.2.1 / L4T R36.4.7)
 - CUDA 12.6 (GPU Driver 540.4.0)
@@ -68,41 +83,43 @@ Generate an SSH key on your local machine and copy it to the Jetson:
 
 ```bash
 # Generate key (local machine)
-ssh-keygen -t ed25519 -C "you@example.com"
+ssh-keygen -t ed25519 -C "yourmail@example.com"
 
 # Copy to Jetson (enter password on first prompt)
 ssh-copy-id <user>@<jetson-ip>
 
-# Login to verify passwordless access
+# Login to verify passwordless access (now you are in remote machine)
 ssh <user>@<jetson-ip>
 ```
 
 On the Jetson, set up passwordless sudo so scripts don't prompt for passwords:
 
 ```bash
+# Add a sudoer to the passwordless list
 echo '<user> ALL=(ALL) NOPASSWD: ALL' | sudo tee /etc/sudoers.d/<user>
 sudo chmod 440 /etc/sudoers.d/<user>
-sudo visudo -c        # verify syntax
 
-# Back to local machine
-logout
+# Verify syntax
+sudo visudo -c
 ```
 
-### 3. Copy Project to Jetson
+### 3. Copy the working directory to Jetson
+
+On the Jetson:
 
 ```bash
-git clone git@github.com:ccbruce0812/nikko-vlm-webui.git
-scp -r nikko-vlm-webui <user>@<jetson-ip>:~/
-```
+# Optional: SSH back to Jetson if disconnected 
+ssh <user>@<jetson-ip>
 
-All subsequent operations happen inside `nikko-vlm-webui/` on the Jetson.
+git clone git@github.com:ccbruce0812/nikko-vlm-webui.git
+```
 
 ### 4. Update Stock Packages
 
 On the Jetson:
 
 ```bash
-# Back to remote machine
+# Optional: SSH back to Jetson if disconnected
 ssh <user>@<jetson-ip>
 
 sudo apt-get update
@@ -111,263 +128,73 @@ sudo apt-get upgrade
 
 ### 5. Disable GUI
 
-Jetson boots into graphical desktop by default (~500MB RAM consumed).
-Switch to multi-user.target to free memory, but keep Xorg + openbox available for
-GPU-accelerated applications (Argus requires Xorg, kiosk GUI requires a window manager).
-
 ```bash
-# Install openbox (lightweight window manager)
-sudo apt install -y openbox
-
-# Switch boot target to text mode
-sudo systemctl set-default multi-user.target
-
-# Create xorg.service (Xorg under multi-user.target)
-sudo tee /etc/systemd/system/xorg.service > /dev/null << 'EOF'
-[Unit]
-Description=Xorg display server
-Before=openbox.service
-
-[Service]
-ExecStart=/usr/bin/Xorg :0 -nolisten tcp -noreset
-Restart=no
-
-[Install]
-WantedBy=multi-user.target
-EOF
-sudo systemctl daemon-reload
-sudo systemctl enable xorg.service
-
-# Create openbox.service (window manager)
-sudo tee /etc/systemd/system/openbox.service > /dev/null << EOF
-[Unit]
-Description=Openbox window manager
-After=xorg.service
-Requires=xorg.service
-
-[Service]
-Type=simple
-ExecStart=/usr/bin/openbox
-Environment=DISPLAY=:0
-User=${USER}
-Restart=no
-
-[Install]
-WantedBy=multi-user.target
-EOF
-sudo systemctl daemon-reload
-sudo systemctl enable openbox.service
-
-# Openbox RC: undecorated kiosk window
-mkdir -p ~/.config/openbox
-cat > ~/.config/openbox/rc.xml << 'RCEOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<openbox_config>
-  <keyboard>
-    <chainQuitKey>C-g</chainQuitKey>
-  </keyboard>
-  <applications>
-    <application name="Kiosk VLM GUI" class="main.py">
-      <decor>no</decor>
-    </application>
-  </applications>
-</openbox_config>
-RCEOF
+bash scripts/01-disable-gui.sh
 ```
 
-After reboot, Xorg and openbox run under multi-user.target. Set `DISPLAY=:0` before
-using any GPU-accelerated GStreamer pipeline.
+Switches boot target to multi-user.target, installs openbox, creates xorg.service,
+openbox.service, xterm.service, and configures kiosk window decor settings.
+Reboot required after running.
 
-Verify that Xorg is working correctly:
-
-```bash
-# After reboot, check Xorg is running
-pgrep Xorg && echo "Xorg OK"
-
-# Optional: verify X11 rendering with xclock
-export DISPLAY=:0
-xclock &
-```
-
-> 📄 Script: `scripts/01-disable-gui.sh` (excludes manual verification above)
-
-> **After completing System Configuration (step 6), test the CSI camera FPS:**
-> ```bash
-> export DISPLAY=:0
-> sudo systemctl restart nvargus-daemon
-> timeout 5 gst-launch-1.0 -v nvarguscamerasrc sensor-id=0 \
->     ! 'video/x-raw(memory:NVMM),width=1280,height=720,format=NV12,framerate=60/1' \
->     ! nvvidconv ! fpsdisplaysink video-sink=fakesink
-> # Should show ~59 fps. Without DISPLAY, Argus caps at ~3 fps.
->
-> timeout 5 gst-launch-1.0 -v nvarguscamerasrc sensor-id=0 \
->     ! 'video/x-raw(memory:NVMM),width=1920,height=1080,format=NV12,framerate=30/1' \
->     ! nvvidconv ! fpsdisplaysink video-sink=fakesink
-> # Should show ~29 fps.
-> ```
+> 📄 Script: `scripts/01-disable-gui.sh`
 
 ### 6. System Configuration
 
-CSI camera (CAM0 / IMX219), Super Mode 25W, CMA tuning for maximizing GPU-available memory.
-
 ```bash
-# Check current status
-sudo nvpmodel -q
-ls -la /dev/video* 2>/dev/null
-cat /proc/meminfo | grep -E "^Cma|^MemAvailable"
-
-# CSI camera — if /dev/video0 missing, configure via jetson-io.py
-# sudo /opt/nvidia/jetson-io/jetson-io.py → IMX219 → CAM0 → Save & reboot
-
-# Super Mode 25W — if not shown, delete old conf and reboot
-sudo nvpmodel -q | grep -q "25W" || {
-  sudo rm -rf /etc/nvpmodel.conf && sudo reboot
-}
-
-# MAXN Super + lock clocks
-sudo nvpmodel -m 2
-sudo jetson_clocks
-
-# Kernel tuning
-sudo sysctl -w vm.swappiness=10
-sudo sysctl -w vm.vfs_cache_pressure=200
-sudo sysctl -w vm.min_free_kbytes=65536
-
-# Compact memory (maximize CMA)
-sudo sync
-sudo sysctl -w vm.drop_caches=3
-sudo sysctl -w vm.compact_memory=1
-
-# Verify
-cat /proc/meminfo | grep -E "^Cma|^MemAvailable"
-free -h
+bash scripts/02-system-config.sh
 ```
 
-> 📄 Script: `scripts/02-system-config.sh` (run: `bash scripts/02-system-config.sh`)
+Configures CSI camera (IMX219 CAM0), enables MAXN Super Mode (25W) with
+jetson_clocks, and applies kernel memory tuning (swappiness, cache pressure,
+CMA compaction).
+
+> 📄 Script: `scripts/02-system-config.sh`
 
 ### 7. Install Basic Packages
 
 ```bash
-sudo apt-get install -y python3-venv v4l-utils libxcb-cursor0 python3-pip
+bash scripts/03-install-deps.sh
 ```
+
+Installs: python3-venv, v4l-utils, libxcb-cursor0, python3-pip.
 
 > 📄 Script: `scripts/03-install-deps.sh`
 
 ## Model Download
 
-Use `scripts/04-download-models.sh` for one-click download, or follow manual steps below:
-
-### 1. Create venv and install dependencies
-
 ```bash
-python3 -m venv /tmp/model-dl-venv
-source /tmp/model-dl-venv/bin/activate
-pip install huggingface_hub ultralytics onnx
+bash scripts/04-download-models.sh
 ```
 
-### 2. Reason2 (IQ4_XS)
+Downloads all models into `models/`: Reason2 (IQ4_XS, \~970MB LLM + 782MB mmproj),
+moondream2 (q4_k, \~877MB LLM + 868MB mmproj), and YOLOv8n (~6.5MB .pt).
+
+**Optional: Export YOLO to TensorRT** (after building the yolo Docker image):
 
 ```bash
-mkdir -p models/reason2
-cd models/reason2
-
-# LLM (IQ4_XS, ~970MB)
-hf download mradermacher/Cosmos-Reason2-2B-heretic-GGUF \
-    Cosmos-Reason2-2B-heretic.IQ4_XS.gguf --local-dir .
-
-# mmproj (F16, ~782MB)
-hf download apolo13x/Cosmos-Reason2-2B-GGUF \
-    mmproj-Cosmos-Reason2-2B-F16.gguf --local-dir .
-
-cd ../..
-```
-
-### 3. moondream2 (q4_k)
-
-```bash
-mkdir -p models/moondream2
-cd models/moondream2
-
-hf download salivosa/moondream2-gguf \
-    moondream2-q4_k.gguf moondream2-mmproj-f16.gguf --local-dir .
-
-cd ../..
-```
-
-### 4. YOLO (TensorRT)
-
-Download the `.pt` model first, then optionally export to TensorRT for faster inference.
-The server auto-detects: TensorRT engine if available, otherwise falls back to PyTorch.
-
-```bash
-mkdir -p models/yolo
-cd models/yolo
-
-# Download YOLOv8n PyTorch model (~6.5MB)
-python3 -c "
-from ultralytics import YOLO
-model = YOLO('yolov8n.pt')  # downloads to current dir
-print('Downloaded yolov8n.pt')
-"
-
-cd ../..
-```
-
-**Export to TensorRT (optional, 3–5 min):**
-
-```bash
-# After docker build, run once to generate .engine file:
 sudo docker run --rm --runtime nvidia \
     -v "$(pwd)/models/yolo:/model" \
     -e EXPORT_ENGINE=1 yolo
 ```
 
-The server picks TensorRT automatically on next start if `.engine` exists.
+The server auto-detects the `.engine` file and uses TensorRT for faster inference.
 
-> 📄 Script: `scripts/04-download-models.sh` (downloads all models)
-
-### 5. Clean up venv
-
-```bash
-deactivate
-rm -rf /tmp/model-dl-venv
-```
-
-> 📄 Script: `scripts/04-download-models.sh` (run: `bash scripts/04-download-models.sh`)
+> 📄 Script: `scripts/04-download-models.sh`
 
 ## Build Containers
 
 ### 1. Build Instructions
 
-
 ```bash
-# Run from nikko-vlm-webui root
-
-# Pull base image (L4T PyTorch)
-sudo docker pull dustynv/l4t-pytorch:r36.4.0
-
-# Router (API gateway, dynamic model detection, ~168MB)
-sudo docker build -t router router/
-
-# WebUI (browser frontend, ~1.5GB) — see live-vlm-webui.md
-sudo docker build -t live-vlm-webui live-vlm-webui/
-
-# Reason2 (llama-server pre-built binaries, ~2GB)
-sudo docker build -t reason2 -f reason2/Dockerfile .
-
-# moondream2 (llama-server pre-built binaries, ~2GB)
-sudo docker build -t moondream2 -f moondream2/Dockerfile .
-
-# YOLO (PyTorch + ultralytics + TensorRT, ~13GB)
-sudo docker build -t yolo yolo/
-
-# RTSP Server (CSI camera streaming, optional, ~2GB)
-sudo docker build -t rtsp-server rtsp-server/
+bash scripts/05-build-all.sh
 ```
+
+Builds all containers from Dockerfiles: router, live-vlm-webui, reason2, moondream2,
+yolo, and rtsp-server. The base image `dustynv/l4t-pytorch:r36.4.0` is pulled once.
 
 > 📄 Script: `scripts/05-build-all.sh`
 
-## Container Description
+### 2. Container Description
 
 All containers on `vlm-net` bridged network.  Router and RTSP server also expose ports to host. Access via `localhost`, `127.0.0.1`, or Jetson LAN IP (e.g. `192.168.1.119`).
 
@@ -382,7 +209,7 @@ All containers on `vlm-net` bridged network.  Router and RTSP server also expose
 
 ## Start Services
 
-### 1. Interactive Launcher (recommended)
+### 1. Interactive Model Launcher (recommended)
 
 ```bash
 bash scripts/06-start-models.sh
@@ -394,152 +221,27 @@ Starts Router (always), then interactively pick a model:
 - Each VLM shows its default parameters (GPU layers, threads, batch, ctx, flash-attn) — press Enter to keep defaults or type new values
 - Automatically handles power mode, nvargus-daemon restart, and memory tuning
 
-> 📄 Start: `scripts/06-start-models.sh`
-> 📄 Stop:  `scripts/07-stop-models.sh` (removes all containers + vlm-net)
+> 📄 Script - Start: `scripts/06-start-models.sh`
+> 📄 Script - Stop: `scripts/07-stop-models.sh`
 
-### 2. Manual docker run
-
-For individual control, reference commands:
+### 2. Quick Test
 
 ```bash
-# Create shared network (once)
-sudo docker network create vlm-net
-
-# Router (required)
-sudo docker run -d --name router --network vlm-net -p 8080:8080 router
-
-# Pick one model (do NOT start multiple VLM simultaneously):
-# Reason2 (~2.6GB GPU)
-sudo docker run -d --name reason2 --runtime nvidia --network vlm-net \
-    -v "$(pwd)/models/reason2:/model:ro" reason2
-
-# moondream2 (~2.6GB GPU)
-sudo docker run -d --name moondream2 --runtime nvidia --network vlm-net \
-    -v "$(pwd)/models/moondream2:/model:ro" moondream2
-
-# YOLO (~1.5GB GPU, can co-exist with one VLM)
-sudo docker run -d --name yolo --runtime nvidia --network vlm-net \
-    -v "$(pwd)/models/yolo:/model:ro" yolo
-
-# WebUI (host network) — see live-vlm-webui.md
-# RTSP Server — see rtsp-server.md
+bash scripts/08-test-quick.sh
 ```
 
-## Manual Testing
+Queries Router for available models, then runs one-shot inferences only on models
+that are actually running. Test image is `test/test_bus.jpg` — the script skips
+any model container that isn't up.
 
-All tests go through Router (port 8080). The only per-model difference is the `"model"` field.
+> 📄 Script: `scripts/08-test-quick.sh`
 
-### 1. Prepare Test Image (base64 encode)
+### 3. Other Services
 
-```bash
-# Generate test image with PIL or encode existing image
-python3 -c "
-import base64
-with open('test.jpg', 'rb') as f:
-    print(base64.b64encode(f.read()).decode())
-" > /tmp/test_b64.txt
-B64=$(cat /tmp/test_b64.txt)
-```
-
-### 2. Reason2 (image description)
-
-```bash
-curl -s http://localhost:8080/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"model\": \"reason2\",
-    \"messages\": [{\"role\":\"user\",\"content\":[
-      {\"type\":\"text\",\"text\":\"Describe this image in one sentence.\"},
-      {\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/jpeg;base64,$B64\"}}
-    ]}],
-    \"max_tokens\": 100
-  }" | python3 -c "import sys,json; print(json.load(sys.stdin)['choices'][0]['message']['content'])"
-```
-
-### 3. moondream2 (image description)
-
-```bash
-curl -s http://localhost:8080/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"model\": \"moondream2\",
-    \"messages\": [{\"role\":\"user\",\"content\":[
-      {\"type\":\"text\",\"text\":\"Describe this image in one sentence.\"},
-      {\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/jpeg;base64,$B64\"}}
-    ]}],
-    \"max_tokens\": 100
-  }" | python3 -c "import sys,json; print(json.load(sys.stdin)['choices'][0]['message']['content'])"
-```
-
-### 4. YOLO (object detection)
-
-```bash
-curl -s http://localhost:8080/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"model\": \"yolo\",
-    \"messages\": [{\"role\":\"user\",\"content\":[
-      {\"type\":\"text\",\"text\":\"Detect objects\"},
-      {\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/jpeg;base64,$B64\"}}
-    ]}],
-    \"max_tokens\": 200
-  }" | python3 -c "import sys,json; print(json.load(sys.stdin)['choices'][0]['message']['content'])"
-```
-
-### 5. List Available Models
-
-```bash
-curl -s http://localhost:8080/v1/models | python3 -m json.tool
-```
-
-### 6. Quick Validation (using test/test_bus.jpg)
-
-First checks `/v1/models` to see which models are running, then only tests available models.
-
-```bash
-# Query available models → test only running ones
-python3 -c "
-import base64, json, urllib.request, sys
-
-# 1. Query which models are running
-req = urllib.request.Request('http://localhost:8080/v1/models')
-resp = json.loads(urllib.request.urlopen(req, timeout=10).read())
-running = [m['id'] for m in resp.get('data', [])]
-print(f'Router reports models: {running}')
-
-if not running:
-    print('⚠ No models running')
-    sys.exit(0)
-
-# 2. Read test image
-with open('test/test_bus.jpg', 'rb') as f:
-    b64 = base64.b64encode(f.read()).decode()
-
-# 3. Test only models reported by Router (in fixed order)
-for model in ['reason2', 'moondream2', 'yolo']:
-    if model not in running:
-        print(f'⊘ {model}: not running, skipped')
-        continue
-
-    prompt = 'Describe this image in one sentence.' if model != 'yolo' else 'Detect objects'
-    data = json.dumps({
-        'model': model,
-        'messages': [{'role':'user','content':[
-            {'type':'text','text':prompt},
-            {'type':'image_url','image_url':{'url':f'data:image/jpeg;base64,{b64}'}}
-        ]}],
-        'max_tokens': 100
-    }).encode()
-
-    req = urllib.request.Request('http://localhost:8080/v1/chat/completions',
-        data=data, headers={'Content-Type':'application/json'})
-    resp = json.loads(urllib.request.urlopen(req, timeout=120).read())
-    text = resp['choices'][0]['message']['content']
-    print(f'✓ {model}: {text[:100]}')
-"
-```
-
-> 📄 Script: `scripts/08-test-quick.sh` (run: `bash scripts/08-test-quick.sh`)
+| Service | Docs |
+|---------|------|
+| live-vlm-webui (browser WebRTC UI) | [live-vlm-webui.md](live-vlm-webui.md) |
+| rtsp-server (CSI RTSP stream) | [rtsp-server.md](rtsp-server.md) |
 
 ## Performance Data
 
@@ -565,23 +267,17 @@ for model in ['reason2', 'moondream2', 'yolo']:
 
 ### 1. Tuning Model Parameters (OOM or Performance)
 
-All model parameters are pre-configured in Dockerfiles with Jetson Orin Nano optimized defaults. No changes normally needed.
-To override, pass `-e` environment variables:
+Use the interactive launcher to set per-model parameters at startup:
 
 ```bash
-# Example: lower reason2 GPU layers to free memory
-sudo docker run -d --name reason2 --runtime nvidia \
-    -v "$(pwd)/models/reason2:/model:ro" \
-    -e N_GPU_LAYERS=8 reason2
-
-# Example: increase moondream2 ctx size for longer conversations
-sudo docker run -d --name moondream2 --runtime nvidia \
-    -v "$(pwd)/models/moondream2:/model:ro" \
-    -e CTX_SIZE=2048 moondream2
+bash scripts/06-start-models.sh
 ```
 
-| Container | Tunable Parameters (env vars) | Defaults |
-|-----------|------------------------------|----------|
+The script shows current defaults and lets you override before launching.
+Default values (Jetson Orin Nano optimized):
+
+| Container | Tunable Parameters | Defaults |
+|-----------|-------------------|----------|
 | reason2 | `N_GPU_LAYERS` `N_THREADS` `N_BATCH` `CTX_SIZE` `FLASH_ATTN` | 12 / 4 / 256 / 2048 / on |
 | moondream2 | `N_GPU_LAYERS` `N_THREADS` `N_BATCH` `CTX_SIZE` `FLASH_ATTN` | 15 / 4 / 128 / 1024 / on |
 | yolo | (no llama-server params) | — |
@@ -602,7 +298,7 @@ sudo docker system prune -af --volumes
 
 # Python venv: rebuild if packages are stale
 # rm -rf pyside6-gui-venv
-# 11-start-pyside6-nogui.sh
+# bash scripts/11-start-pyside6-nogui.sh
 ```
 
 **Release and compact memory:**
@@ -648,28 +344,26 @@ sudo systemctl start nvargus-daemon
 ./
 ├── router/
 │   ├── Dockerfile
-│   └── router.py                 # dynamic model detection
+│   └── router.py
 ├── reason2/
-│   ├── Dockerfile                # llama-server from source
-│   └── download_model.sh         # IQ4_XS LLM + F16 mmproj
+│   └── Dockerfile
 ├── moondream2/
-│   ├── Dockerfile                # llama-server pre-built binaries
-│   └── download_model.sh         # q4_k LLM + f16 mmproj
+│   └── Dockerfile
 ├── yolo/
-│   ├── Dockerfile                # PyTorch + ultralytics + TensorRT
-│   ├── yolo_server.py            # OpenAI-compatible API server
-│   └── download_model.sh         # YOLO → TensorRT engine export
+│   ├── Dockerfile
+│   └── yolo_server.py
 ├── live-vlm-webui/
-│   ├── Dockerfile                # official live-vlm-webui + GPU fix + API defaults
-│   └── patch_gpu_monitor.py      # Jetson GPU monitor fix
+│   ├── Dockerfile
+│   └── patch_gpu_monitor.py
 ├── rtsp-server/
-│   ├── Dockerfile                # GStreamer CSI RTSP server
-│   └── gst_rtsp_server.py        # nvarguscamerasrc → nvvidconv → x264enc → RTSP
+│   ├── Dockerfile
+│   └── gst_rtsp_server.py
 ├── models/
 │   ├── reason2/
 │   ├── moondream2/
 │   └── yolo/
 ├── test/
+│   └── test_bus.jpg
 ├── scripts/
 │   ├── 01-disable-gui.sh               # disable GUI + enable Xorg/openbox
 │   ├── 02-system-config.sh             # CSI camera + Super Mode 25W + NVMap + memory tuning
@@ -685,12 +379,14 @@ sudo systemctl start nvargus-daemon
 │   ├── 12-start-rtsp-server.sh         # start RTSP Server (CSI camera, optional)
 │   ├── 13-stop-rtsp-server.sh          # stop RTSP Server
 │   ├── 14-start-live-vlm-webui.sh      # start browser WebUI
-│   └── 15-stop-live-vlm-webui.sh       # stop browser WebUI
+│   ├── 15-stop-live-vlm-webui.sh       # stop browser WebUI
+│   ├── 16-install-pyside6-main.sh      # pyside6-main venv + packages
+│   └── 17-start-pyside6-main.sh        # launch pyside6-main GUI
 ├── pyside6-gui/
-│   ├── main.py                         # GUI entry point
-│   ├── main_nogui.py                   # headless entry point
+│   ├── main.py
+│   ├── main_nogui.py
 │   ├── assets/
-│   │   └── style.qss                   # dark theme stylesheet
+│   │   └── style.qss
 │   └── src/
 │       ├── ui/
 │       │   ├── kiosk_window.py
@@ -703,10 +399,24 @@ sudo systemctl start nvargus-daemon
 │           ├── reason2_overlay.py
 │           ├── moondream2_overlay.py
 │           └── system_monitor.py
+├── pyside6-main/
+│   ├── main.py
+│   └── src/
+│       ├── ui/
+│       │   ├── main_window.py
+│       │   ├── ai_config_panel.py
+│       │   ├── control_panel.py
+│       │   └── video_canvas.py
+│       └── modules/
+│           ├── router_client.py
+│           ├── yolo_overlay.py
+│           ├── reason2_overlay.py
+│           ├── moondream2_overlay.py
+│           ├── video_worker.py
+│           └── system_monitor.py
 ├── readme.md
 ├── pyside6-gui.md
+├── pyside6-main.md
 ├── rtsp-server.md
-├── live-vlm-webui.md
-├── log.md
-└── porting.md
+└── live-vlm-webui.md
 ```
