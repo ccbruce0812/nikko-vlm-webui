@@ -1,17 +1,17 @@
 #!/bin/bash
 # ============================================================
-# 16-install-pyside6-main.sh
+# 15-install-pyside6-main.sh
 # Create Python venv and install PySide6 + aiohttp for
 # pyside6-main GUI (runs under Xorg + openbox, same as pyside6-gui).
 #
 # Usage:
-#   bash scripts/16-install-pyside6-main.sh
+#   bash scripts/15-install-pyside6-main.sh
 # ============================================================
 set -euo pipefail
 
 # ---- help ----
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-    echo "Usage: bash scripts/16-install-pyside6-main.sh"
+    echo "Usage: bash scripts/15-install-pyside6-main.sh"
     echo ""
     echo "  Create pyside6-main-venv with PySide6 + aiohttp."
     echo "  Runs under Xorg + openbox (no graphical.target needed)."

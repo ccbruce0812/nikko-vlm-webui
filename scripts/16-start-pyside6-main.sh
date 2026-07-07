@@ -1,10 +1,10 @@
 #!/bin/bash
 # ============================================================
-# 17-start-pyside6-main.sh
+# 16-start-pyside6-main.sh
 # Launch pyside6-main GUI (Xorg + openbox, same env as pyside6-gui).
 #
 # Usage:
-#   bash scripts/17-start-pyside6-main.sh
+#   bash scripts/16-start-pyside6-main.sh
 # ============================================================
 set -euo pipefail
 
@@ -15,7 +15,7 @@ MAIN_DIR="${PROJECT_DIR}/pyside6-main"
 
 # ---- help ----
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-    echo "Usage: bash scripts/17-start-pyside6-main.sh [--dpi-scale SCALE]"
+    echo "Usage: bash scripts/16-start-pyside6-main.sh [--dpi-scale SCALE]"
     echo ""
     echo "  Launch the pyside6-main GUI (windowed, with title bar)."
     echo "  Requires Xorg + openbox and Router API."
@@ -27,7 +27,7 @@ fi
 
 if [ ! -f "${VENV_DIR}/bin/activate" ]; then
     echo "[ERROR] venv not found at ${VENV_DIR}"
-    echo "        Run: bash scripts/16-install-pyside6-main.sh"
+    echo "        Run: bash scripts/15-install-pyside6-main.sh"
     exit 1
 fi
 

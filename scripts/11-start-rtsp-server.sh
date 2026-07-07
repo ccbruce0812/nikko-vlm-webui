@@ -16,7 +16,7 @@ RTSP_PORT=8554
 RTSP_PATH=/stream
 
 usage() {
-    echo "Usage: bash scripts/20-start-rtsp-server.sh [OPTIONS]"
+    echo "Usage: bash scripts/11-start-rtsp-server.sh [OPTIONS]"
     echo ""
     echo "  Start the CSI camera RTSP server."
     echo ""
@@ -28,9 +28,9 @@ usage() {
     echo "  --help, -h           show this message"
     echo ""
     echo "Examples:"
-    echo "  bash scripts/20-start-rtsp-server.sh"
-    echo "  bash scripts/20-start-rtsp-server.sh --resolution 1920x1080@30 --port 8555"
-    echo "  bash scripts/20-start-rtsp-server.sh --camera-id 0 --path /cam0"
+    echo "  bash scripts/11-start-rtsp-server.sh"
+    echo "  bash scripts/11-start-rtsp-server.sh --resolution 1920x1080@30 --port 8555"
+    echo "  bash scripts/11-start-rtsp-server.sh --camera-id 0 --path /cam0"
     exit 0
 }
 

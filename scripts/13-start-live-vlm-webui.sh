@@ -9,7 +9,7 @@ set -euo pipefail
 PORT=8090
 
 usage() {
-    echo "Usage: bash scripts/14-start-live-vlm-webui.sh [OPTIONS]"
+    echo "Usage: bash scripts/13-start-live-vlm-webui.sh [OPTIONS]"
     echo ""
     echo "  Start the browser-based VLM WebUI (WebRTC relay + Router client)."
     echo ""
@@ -18,8 +18,8 @@ usage() {
     echo "  --help, -h           show this message"
     echo ""
     echo "Examples:"
-    echo "  bash scripts/14-start-live-vlm-webui.sh"
-    echo "  bash scripts/14-start-live-vlm-webui.sh --port 8091"
+    echo "  bash scripts/13-start-live-vlm-webui.sh"
+    echo "  bash scripts/13-start-live-vlm-webui.sh --port 8091"
     exit 0
 }
 
@@ -42,7 +42,7 @@ echo "  URL:  http://<jetson-ip>:${PORT}"
 if sudo docker ps --format '{{.Names}}' | grep -q '^live-vlm-webui$'; then
     echo ""
     echo "✗ live-vlm-webui is already running."
-    echo "  Stop it first: bash scripts/15-stop-live-vlm-webui.sh"
+    echo "  Stop it first: bash scripts/14-stop-live-vlm-webui.sh"
     exit 1
 fi
 
