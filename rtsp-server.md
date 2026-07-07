@@ -56,7 +56,7 @@ is built as part of `05-build-all.sh`.
 ### 2. Launch
 
 ```bash
-bash scripts/12-start-rtsp-server.sh [OPTIONS]
+bash scripts/11-start-rtsp-server.sh [OPTIONS]
 ```
 
 Checks Xorg is running, restarts `nvargus-daemon`, then launches the RTSP container.
@@ -69,8 +69,8 @@ Checks Xorg is running, restarts `nvargus-daemon`, then launches the RTSP contai
 | `--path PATH` | `/stream` | RTSP mount path |
 | `--help, -h` | — | Show usage |
 
-> 📄 Start: `scripts/12-start-rtsp-server.sh`
-> 📄 Stop: `scripts/13-stop-rtsp-server.sh`
+> 📄 Start: `scripts/1-start-rtsp-server.sh`
+> 📄 Stop: `scripts/2-stop-rtsp-server.sh`
 
 ### 3. Access
 
