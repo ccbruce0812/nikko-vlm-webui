@@ -33,10 +33,16 @@ if [ ! -f "${VENV_DIR}/bin/activate" ]; then
 fi
 
 # ---- Already running? ----
-if pgrep -f 'pyside6-gui/main.py' >/dev/null 2>&1; then
-    echo "[ERROR] Kiosk GUI is already running."
-    echo "        Stop it first: Alt+Q or kill \$\(pgrep -f 'pyside6-gui/main.py'\)"
-    exit 1
+PID_FILE="/tmp/pyside6-gui.pid"
+if [ -f "$PID_FILE" ]; then
+    OLD_PID=$(cat "$PID_FILE" 2>/dev/null)
+    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+        echo "[ERROR] pyside6-gui is already running (PID $OLD_PID)."
+        echo "        Stop it first: Alt+Q or kill $OLD_PID"
+        exit 1
+    fi
+    # Stale PID file — clean it
+    rm -f "$PID_FILE"
 fi
 
 # ---- Xorg (required by nvarguscamerasrc) ----

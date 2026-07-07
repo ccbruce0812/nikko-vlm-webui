@@ -1,14 +1,13 @@
 # Kiosk VLM GUI
 
-This document covers the PySide6 kiosk GUI and headless validation tool.
+A PySide6 kiosk GUI.
 For Docker backend, model setup, and system configuration see [readme.md](readme.md).
 For the browser-based WebUI alternative, see [live-vlm-webui.md](live-vlm-webui.md).
 
 ## Overview
 
-Single-window kiosk GUI for live CSI camera streaming with router-based multi-model
-VLM inference. All AI inference is delegated to Docker containers via the Router API.
-A headless variant is also provided for pipeline validation.
+Single-window kiosk GUI for live CSI camera streaming with router-based multi-model VLM inference.
+All AI inference is delegated to Docker containers via the Router API.
 
 ### 1. Architecture
 
@@ -73,22 +72,6 @@ flowchart TB
     SM -- "read_stats()" --> Main
 ```
 
-**Headless mode:**
-
-```mermaid
-flowchart LR
-    CLI["CLI args"] --> GST["GStreamer pipeline"]
-    GST --> App["appsink"]
-    App --> Buf["RGBA buffer"]
-
-    Buf --> Log["Console log"]
-    Buf --> Enc["JPEG-encode"]
-    Enc --> POST["POST /v1/chat/completions"]
-    POST --> Resp["Response"]
-    Resp --> Overlay["Overlay Module"]
-    Overlay --> Print["result to stdout"]
-```
-
 **Frame flow:**
 
 ```mermaid
@@ -106,7 +89,7 @@ flowchart LR
     Display -->|"VLM caption"| CDraw["QPainter overlay<br/>(text bar)"]
 ```
 
-### 2. Design Decisions
+### 2. Function Blocks
 
 | Aspect | pyside6-gui |
 |--------|-------------|
@@ -137,25 +120,7 @@ bash scripts/10-start-pyside6-gui.sh
 - Handles Xorg/openbox lifecycle, `nvargus-daemon`, and `DISPLAY=:0` automatically
 - Kiosk fullscreen mode (undecorated window managed by openbox RC)
 
-```bash
-bash scripts/11-start-pyside6-nogui.sh [OPTIONS]
-```
-
-- Handles Xorg lifecycle, sets `QT_QPA_PLATFORM=offscreen`
-- Headless CLI mode — same pipeline, no GUI window
-
-| Argument | Type | Default | Validation |
-|----------|------|---------|-------------|
-| `--camera-id` | int | 0 | Must exist at `/dev/video{id}` |
-| `--resolution` | str | `1920x1080` | Must match a mode from `v4l2-ctl --list-formats-ext` |
-| `--framerate` | int | 0 (auto) | Capped to hardware max if exceeded; warning logged |
-| `--model` | str | `reason2` | Must appear in `GET /v1/models` response |
-| `--interval` | int | 1000 | Clamped to ≥1 ms |
-| `--prompt` | str | `"Describe this image in one sentence."` | — |
-| `--max-tokens` | int | 512 | Clamped to 1–2048 |
-
-> 📄 GUI: `scripts/10-start-pyside6-gui.sh`
-> 📄 Headless: `scripts/11-start-pyside6-nogui.sh`
+> 📄 Script: `scripts/10-start-pyside6-gui.sh`
 
 ## UI Design
 
@@ -202,13 +167,13 @@ bash scripts/11-start-pyside6-nogui.sh [OPTIONS]
 └────────────────────────────┴──────────────────────────────────────────┘
 ```
 
-1. Select camera and resolution.
-2. Pick an AI model from the dropdown (auto-populated from router).
-3. Set interval, prompt, and max tokens.
-4. Press **START** or hit `Alt+S`. The button changes to **STOP**.
-5. Video streams continuously. At each interval, a snapshot is sent to the Router API.
-6. Press **STOP** (`Alt+S`) to halt streaming and inference.
-7. Press **QUIT** (`Alt+Q`) or close the window to exit.
+- Select camera and resolution.
+- Pick an AI model from the dropdown (auto-populated from router).
+- Set interval, prompt, and max tokens.
+- Press **START** or hit `Alt+S`. The button changes to **STOP**.
+- Video streams continuously. At each interval, a snapshot is sent to the Router API.
+- Press **STOP** (`Alt+S`) to halt streaming and inference.
+- Press **QUIT** (`Alt+Q`) or close the window to exit.
 
 ### 4. Keyboard Navigation
 
@@ -266,8 +231,8 @@ Measured on Jetson Orin Nano with IMX219 (DISPLAY=:0 required for full speed):
 | 3280×2464 | 21 | ~18 (steady) | ~8ms | ✓ verified with reason2 (~5s/inf) & yolo (~150ms/inf) |
 
 **Critical:** Without `DISPLAY=:0` and a running Xorg server, Argus falls back to a slow
-capture path (~3 fps regardless of mode). Both `10-` and `11-` start scripts handle this
-automatically. When running `main_nogui.py` directly, you must export `DISPLAY=:0`.
+capture path (~3 fps regardless of mode). The `10-start-pyside6-gui.sh` start script handles
+this automatically.
 
 **4K notes:**
 
@@ -304,16 +269,16 @@ YOLO handles "No objects detected." responses gracefully (no overlay drawn, no w
 
 ### 3. System Monitor OSD & Console Log
 
-Both GUI (OSD top-right) and headless (console) use the same format, updated every 5 seconds:
+The GUI outputs performance stats every 5 seconds both as OSD overlay and console log:
 
 ```
-17:58:17 [nogui] Streaming 3280x2464@21 — interval 1000ms, model reason2
-17:58:19 [nogui] POST /v1/chat/completions → reason2 (554 KB)
-17:58:27 [nogui] in:16.3 | reason:7624ms overlay:57ms | GPU:0% CPU:71% RAM:4.2G VRAM:4.2G
-17:58:32 [nogui] in:17.7 | reason:7624ms overlay:57ms | GPU:1% CPU:52% RAM:4.3G VRAM:4.3G
-17:58:37 [nogui] in:17.5 | reason:7624ms overlay:57ms | GPU:0% CPU:77% RAM:4.3G VRAM:4.3G
+17:58:17 [gui] Streaming 3280x2464@21 — interval 1000ms, model reason2
+17:58:19 [gui] POST /v1/chat/completions → reason2 (554 KB)
+17:58:27 [gui] in:16.3 | reason:7624ms overlay:57ms | GPU:0% CPU:71% RAM:4.2G VRAM:4.2G
+17:58:32 [gui] in:17.7 | reason:7624ms overlay:57ms | GPU:1% CPU:52% RAM:4.3G VRAM:4.3G
+17:58:37 [gui] in:17.5 | reason:7624ms overlay:57ms | GPU:0% CPU:77% RAM:4.3G VRAM:4.3G
 ^C
-17:58:40 [nogui] Shutting down.
+17:58:40 [gui] Shutting down.
 ```
 
 | Field | Source | Description |
@@ -439,7 +404,7 @@ sequenceDiagram
 
 ### 1. Argus FPS too low (~3 fps)
 
-Argus (nvarguscamerasrc) requires an X server for full-speed capture. Ensure Xorg is running and `DISPLAY=:0` is set. Both `10-start-pyside6-gui.sh` and `11-start-pyside6-nogui.sh` start scripts handle this automatically.
+Argus (nvarguscamerasrc) requires an X server for full-speed capture. Ensure Xorg is running and `DISPLAY=:0` is set. The `10-start-pyside6-gui.sh` start script handles this automatically.
 
 Use the command to verify:
 
@@ -533,3 +498,4 @@ bash scripts/06-start-models.sh
 sudo apt install -y libxcb-cursor0
 export QT_QPA_PLATFORM=xcb
 ```
+

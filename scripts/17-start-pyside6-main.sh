@@ -32,10 +32,16 @@ if [ ! -f "${VENV_DIR}/bin/activate" ]; then
 fi
 
 # ---- Already running? ----
-if pgrep -f 'pyside6-main/main.py' >/dev/null 2>&1; then
-    echo "[ERROR] pyside6-main is already running."
-    echo "        Close the existing window first."
-    exit 1
+PID_FILE="/tmp/pyside6-main.pid"
+if [ -f "$PID_FILE" ]; then
+    OLD_PID=$(cat "$PID_FILE" 2>/dev/null)
+    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+        echo "[ERROR] pyside6-main is already running (PID $OLD_PID)."
+        echo "        Close the existing window first."
+        exit 1
+    fi
+    # Stale PID file — clean it
+    rm -f "$PID_FILE"
 fi
 
 # ---- Xorg + DISPLAY ----

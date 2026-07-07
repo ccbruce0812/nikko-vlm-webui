@@ -2,6 +2,7 @@ import sys
 import os
 import signal
 import argparse
+import atexit
 
 # 確保專案根目錄在系統路徑中，以解決模組匯入問題 (ImportError)
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -12,12 +13,42 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt, QTimer
 from src.ui.main_window import MainWindow
 
+PID_FILE = "/tmp/pyside6-main.pid"
+
 _quit_flag = False
+
+
+def _release_pidfile():
+    """Remove the PID file (idempotent)."""
+    try:
+        os.remove(PID_FILE)
+    except OSError:
+        pass
+
+
+def _acquire_pidfile():
+    """Ensure only one instance runs via PID file.  Stale files are cleaned."""
+    if os.path.exists(PID_FILE):
+        try:
+            with open(PID_FILE) as f:
+                old_pid = int(f.read().strip())
+            os.kill(old_pid, 0)  # signal 0 = existence check
+            print(f"[ERROR] pyside6-main is already running (PID {old_pid}).", file=sys.stderr)
+            sys.exit(1)
+        except (OSError, ValueError):
+            # Stale PID file (process died or invalid content)
+            print(f"[WARN] Removing stale PID file: {PID_FILE}", file=sys.stderr)
+            os.remove(PID_FILE)
+
+    with open(PID_FILE, "w") as f:
+        f.write(str(os.getpid()))
+    atexit.register(_release_pidfile)
 
 
 def _handle_signal(sig, frame):
     global _quit_flag
     _quit_flag = True
+    _release_pidfile()
 
 
 def _parse_args():
@@ -28,6 +59,8 @@ def _parse_args():
 
 
 def main():
+    _acquire_pidfile()
+
     args = _parse_args()
 
     # 針對高解析度螢幕進行縮放優化

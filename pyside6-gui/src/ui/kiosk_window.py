@@ -56,7 +56,7 @@ class KioskWindow(QMainWindow):
         self._latest_frame = None
         self._pending_inference = False
 
-        # FPS & timing (like nogui)
+        # FPS & timing
         self._input_count = 0
         self._fps_t0 = time.time()
         self._prepare_ms = 0.0

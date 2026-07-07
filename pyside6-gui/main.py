@@ -5,11 +5,14 @@ import signal
 import logging
 import argparse
 import os
+import atexit
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt, QTimer
 
 from src.ui.kiosk_window import KioskWindow
+
+PID_FILE = "/tmp/pyside6-gui.pid"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -21,9 +24,39 @@ logger = logging.getLogger("gui")
 _quit_flag = False
 
 
+def _release_pidfile():
+    """Remove the PID file (idempotent)."""
+    try:
+        os.remove(PID_FILE)
+    except OSError:
+        pass
+
+
+def _acquire_pidfile():
+    """Ensure only one instance runs via PID file.  Stale files are cleaned."""
+    if os.path.exists(PID_FILE):
+        try:
+            with open(PID_FILE) as f:
+                old_pid = int(f.read().strip())
+            os.kill(old_pid, 0)  # signal 0 = existence check
+            logger.error("Another instance is already running (PID %d).", old_pid)
+            print(f"[ERROR] pyside6-gui is already running (PID {old_pid}).", file=sys.stderr)
+            sys.exit(1)
+        except (OSError, ValueError):
+            # Stale PID file (process died or invalid content)
+            logger.warning("Removing stale PID file: %s", PID_FILE)
+            os.remove(PID_FILE)
+
+    with open(PID_FILE, "w") as f:
+        f.write(str(os.getpid()))
+    atexit.register(_release_pidfile)
+    logger.info("PID file acquired: %s (PID %d)", PID_FILE, os.getpid())
+
+
 def _handle_signal(sig, frame):
     global _quit_flag
     _quit_flag = True
+    _release_pidfile()
 
 
 def _parse_args():
@@ -34,6 +67,8 @@ def _parse_args():
 
 
 def main():
+    _acquire_pidfile()
+
     args = _parse_args()
 
     QApplication.setHighDpiScaleFactorRoundingPolicy(

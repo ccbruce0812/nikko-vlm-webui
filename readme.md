@@ -4,14 +4,20 @@
 
 Multi-model VLM inference on NVIDIA Jetson Orin Nano via Docker containers, using the jetson-containers ecosystem for CUDA management.
 
-### 1. Architecture
+### 1. Hardware Requirements
+
+- **NVIDIA Jetson Orin Nano** (JetPack 6.2.1 / L4T R36.4.7)
+- CUDA 12.6 (GPU Driver 540.4.0)
+- RAM: 7.4GB
+- Storage: 30GB+ free (Docker images ~20GB + models ~3.5GB)
+
+### 2. Architecture
 
 ```mermaid
 flowchart LR
     subgraph Clients["Clients"]
         Browser["Browser"]
         Kiosk["pyside6-gui<br/>(Kiosk GUI)"]
-        Nogui["pyside6-nogui<br/>(Headless)"]
         Desktop["pyside6-main<br/>(Desktop GUI)"]
     end
 
@@ -32,17 +38,15 @@ flowchart LR
     Browser --> WebUI --> Router
     CSI --> RTSP --> WebUI
     CSI --> Kiosk
-    CSI --> Nogui
     CSI --> Desktop
     Kiosk --> Router
-    Nogui --> Router
     Desktop --> Router
     Router --> Moon
     Router --> Cosmos
     Router --> YOLO
 ```
 
-### 2. GUI Tools
+### 3. GUI Tools
 
 Two GUI frontends, both using the same Router API + Docker model backend:
 
@@ -51,7 +55,7 @@ Two GUI frontends, both using the same Router API + Docker model backend:
 | pyside6-gui | Kiosk (fullscreen) | Fullscreen control panel, OSD overlay, sidebar control | [pyside6-gui.md](pyside6-gui.md) |
 | pyside6-main | Desktop (windowed) | Windowed control panel + AI popup, YOLO auto-detection | [pyside6-main.md](pyside6-main.md) |
 
-### 3. Web UI Tools
+### 4. Web UI Tools
 
 Browser-based frontend with WebRTC live streaming:
 
@@ -59,23 +63,26 @@ Browser-based frontend with WebRTC live streaming:
 |------|-------------|------|
 | live-vlm-webui | WebRTC browser UI, RTSP relay to CSI camera | [live-vlm-webui.md](live-vlm-webui.md) |
 
-### 4. RTSP Server
+### 5. RTSP Server
 
-CSI camera RTSP streaming via nvarguscamerasrc. See [rtsp-server.md](rtsp-server.md)
-for pipeline, configuration, and troubleshooting.
+CSI camera RTSP streaming via nvarguscamerasrc:
 
-### 5. Hardware Requirements
+| Tool | Description | Docs |
+|------|-------------|------|
+| rtsp-server | A standard RTSP server | See [rtsp-server.md](rtsp-server.md) |
 
-- **NVIDIA Jetson Orin Nano** (JetPack 6.2.1 / L4T R36.4.7)
-- CUDA 12.6 (GPU Driver 540.4.0)
-- RAM: 7.4GB
-- Storage: 30GB+ free (Docker images ~20GB + models ~3.5GB)
+### 6. Models
+
+See [Container Description](#2-container-description)
 
 ## Prerequisites
 
 ### 1. Prepare SD Card
 
-Download [JetPack 6.2.1 Super SD Card Image](https://developer.nvidia.com/downloads/embedded/L4T/r36_Release_v4.4/jp62-r1-orin-nano-sd-card-image.zip), flash with [balenaEtcher](https://github.com/balena-io/etcher/releases/download/v2.1.6/balenaEtcher-2.1.6.Setup.exe), insert, and boot.  Follow the on-screen setup.
+- Download [JetPack 6.2.1 Super SD Card Image](https://developer.nvidia.com/downloads/embedded/L4T/r36_Release_v4.4/jp62-r1-orin-nano-sd-card-image.zip),
+- Flash with [balenaEtcher](https://github.com/balena-io/etcher/releases/download/v2.1.6/balenaEtcher-2.1.6.Setup.exe),
+- Insert, and boot.
+- Follow the on-screen setup.
 
 ### 2. SSH + Passwordless sudo
 
@@ -297,8 +304,7 @@ sudo docker system prune -af --volumes
 # rm -rf models/reason2 models/moondream2 models/yolo
 
 # Python venv: rebuild if packages are stale
-# rm -rf pyside6-gui-venv
-# bash scripts/11-start-pyside6-nogui.sh
+# rm -rf pyside6-gui-venv pyside6-main-venv
 ```
 
 **Release and compact memory:**
@@ -375,7 +381,6 @@ sudo systemctl start nvargus-daemon
 │   ├── 08-test-quick.sh                # quick model validation
 │   ├── 09-install-pyside6-gui.sh       # pyside6-gui venv + packages
 │   ├── 10-start-pyside6-gui.sh         # launch kiosk GUI
-│   ├── 11-start-pyside6-nogui.sh       # launch headless validation
 │   ├── 12-start-rtsp-server.sh         # start RTSP Server (CSI camera, optional)
 │   ├── 13-stop-rtsp-server.sh          # stop RTSP Server
 │   ├── 14-start-live-vlm-webui.sh      # start browser WebUI
@@ -384,7 +389,6 @@ sudo systemctl start nvargus-daemon
 │   └── 17-start-pyside6-main.sh        # launch pyside6-main GUI
 ├── pyside6-gui/
 │   ├── main.py
-│   ├── main_nogui.py
 │   ├── assets/
 │   │   └── style.qss
 │   └── src/
