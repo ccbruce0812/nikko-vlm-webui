@@ -12,8 +12,8 @@ YOLO runs automatically in background; VLM (reason2/moondream2) triggered manual
 
 | Action | Script |
 |--------|--------|
-| Create venv + install deps | `bash scripts/16-install-pyside6-main.sh` |
-| Start GUI | `bash scripts/17-start-pyside6-main.sh` |
+| Create venv + install deps | `bash scripts/15-install-pyside6-main.sh` |
+| Start GUI | `bash scripts/16-start-pyside6-main.sh` |
 
 Requires Router and at least one model container running (see `scripts/06-start-models.sh`).
 

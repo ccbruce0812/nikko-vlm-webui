@@ -69,8 +69,8 @@ Checks Xorg is running, restarts `nvargus-daemon`, then launches the RTSP contai
 | `--path PATH` | `/stream` | RTSP mount path |
 | `--help, -h` | — | Show usage |
 
-> 📄 Start: `scripts/1-start-rtsp-server.sh`
-> 📄 Stop: `scripts/2-stop-rtsp-server.sh`
+> 📄 Start: `scripts/11-start-rtsp-server.sh`
+> 📄 Stop: `scrips/12-stop-rtsp-server.sh`
 
 ### 3. Access
 

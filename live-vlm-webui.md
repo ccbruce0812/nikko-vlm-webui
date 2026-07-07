@@ -84,8 +84,8 @@ bash scripts/13-start-live-vlm-webui.sh [OPTIONS]
 The start script checks that no existing instance is running, removes any stale
 container, then launches with the specified port (default 8090).
 
-> 📄 Start: `scripts/3-start-live-vlm-webui.sh`
-> 📄 Stop: `scripts/4-stop-live-vlm-webui.sh`
+> 📄 Start: `script/13-start-live-vlm-webui.sh`
+> 📄 Stop: `scrips/14-stop-live-vlm-webui.sh`
 
 ## 3. Access
 
