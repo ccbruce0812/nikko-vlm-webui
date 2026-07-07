@@ -12,6 +12,7 @@
 #   N_BATCH        — batch size               (default: 256)
 #   CTX_SIZE       — context size             (default: 2048)
 #   FLASH_ATTN     — FlashAttention on/off    (default: on)
+#   N_PARALLEL     — server slots             (default: 1)
 #   PORT           — server port              (default: 8002)
 FROM dustynv/l4t-pytorch:r36.4.0
 
@@ -28,8 +29,9 @@ ENV MMPROJ_PATH=/model/mmproj-Cosmos-Reason2-2B-F16.gguf
 ENV N_GPU_LAYERS=12
 ENV N_THREADS=4
 ENV N_BATCH=256
-ENV CTX_SIZE=2048
+ENV CTX_SIZE=4096
 ENV FLASH_ATTN=on
+ENV N_PARALLEL=1
 ENV PORT=8002
 
 # Image input: mmproj auto-resizes to 768×768
@@ -43,4 +45,6 @@ CMD ["sh", "-c", "exec llama-server \
     --batch-size \"$N_BATCH\" \
     --ctx-size \"$CTX_SIZE\" \
     --cache-type-k q4_0 --cache-type-v q4_0 \
+    --parallel \"$N_PARALLEL\" \
+    --no-cache-idle-slots \
     --flash-attn \"$FLASH_ATTN\""]

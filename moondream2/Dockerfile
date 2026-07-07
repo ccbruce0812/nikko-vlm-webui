@@ -12,6 +12,7 @@
 #   N_BATCH        — batch size               (default: 128)
 #   CTX_SIZE       — context size             (default: 1024)
 #   FLASH_ATTN     — FlashAttention on/off    (default: off, phi2 不相容)
+#   N_PARALLEL     — server slots             (default: 1)
 #   PORT           — server port              (default: 8001)
 FROM dustynv/l4t-pytorch:r36.4.0
 
@@ -30,6 +31,7 @@ ENV N_THREADS=4
 ENV N_BATCH=128
 ENV CTX_SIZE=1024
 ENV FLASH_ATTN=on
+ENV N_PARALLEL=1
 ENV PORT=8001
 
 # Image input: moondream2 vision encoder ~378×378
@@ -43,5 +45,7 @@ CMD ["sh", "-c", "exec llama-server \
     --threads \"$N_THREADS\" \
     --batch-size \"$N_BATCH\" \
     --ctx-size \"$CTX_SIZE\" \
+    --cache-type-k q4_0 --cache-type-v q4_0 \
+    --parallel \"$N_PARALLEL\" \
     --flash-attn \"$FLASH_ATTN\" \
     --chat-template \"{% for message in messages %}{% if message['role'] == 'user' %}<image>\\n\\nQuestion: {% for part in message['content'] %}{% if part['type'] == 'text' %}{{ part['text'] }}{% endif %}{% endfor %}\\n\\nAnswer: {% else %}{{ message['content'] }}{% endif %}{% endfor %}\""]

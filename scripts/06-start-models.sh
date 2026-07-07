@@ -12,9 +12,9 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 # ---- Defaults (from Dockerfiles) ----
 # reason2
-R2_GPU_LAYERS=12; R2_THREADS=4; R2_BATCH=256; R2_CTX=2048; R2_FLASH=on; R2_PORT=8002
+R2_GPU_LAYERS=12; R2_THREADS=4; R2_BATCH=256; R2_CTX=4096; R2_FLASH=on; R2_PARALLEL=1; R2_PORT=8002
 # moondream2
-MD_GPU_LAYERS=15; MD_THREADS=4; MD_BATCH=128; MD_CTX=1024; MD_FLASH=on; MD_PORT=8001
+MD_GPU_LAYERS=15; MD_THREADS=4; MD_BATCH=128; MD_CTX=1024; MD_FLASH=on; MD_PARALLEL=1; MD_PORT=8001
 # yolo
 YL_PORT=8003
 
@@ -107,6 +107,7 @@ if $START_REASON2; then
     read -p "  N_BATCH      [${R2_BATCH}]: " v; R2_BATCH="${v:-$R2_BATCH}"
     read -p "  CTX_SIZE    [${R2_CTX}]: " v; R2_CTX="${v:-$R2_CTX}"
     read -p "  FLASH_ATTN   [${R2_FLASH}]: " v; R2_FLASH="${v:-$R2_FLASH}"
+    read -p "  N_PARALLEL  [${R2_PARALLEL}]: " v; R2_PARALLEL="${v:-$R2_PARALLEL}"
 fi
 
 if $START_MOONDREAM2; then
@@ -117,6 +118,7 @@ if $START_MOONDREAM2; then
     read -p "  N_BATCH      [${MD_BATCH}]: " v; MD_BATCH="${v:-$MD_BATCH}"
     read -p "  CTX_SIZE    [${MD_CTX}]: " v; MD_CTX="${v:-$MD_CTX}"
     read -p "  FLASH_ATTN   [${MD_FLASH}]: " v; MD_FLASH="${v:-$MD_FLASH}"
+    read -p "  N_PARALLEL  [${MD_PARALLEL}]: " v; MD_PARALLEL="${v:-$MD_PARALLEL}"
 fi
 
 # ---- 7. Create network + start Router ----
@@ -139,6 +141,7 @@ if $START_REASON2; then
         -e N_BATCH="$R2_BATCH" \
         -e CTX_SIZE="$R2_CTX" \
         -e FLASH_ATTN="$R2_FLASH" \
+        -e N_PARALLEL="$R2_PARALLEL" \
         reason2
     echo "  ✓ reason2 started (loading ~35s)"
 fi
@@ -153,6 +156,7 @@ if $START_MOONDREAM2; then
         -e N_BATCH="$MD_BATCH" \
         -e CTX_SIZE="$MD_CTX" \
         -e FLASH_ATTN="$MD_FLASH" \
+        -e N_PARALLEL="$MD_PARALLEL" \
         moondream2
     echo "  ✓ moondream2 started (loading ~30s)"
 fi
@@ -196,10 +200,10 @@ sudo docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 echo ""
 echo "=== Model parameters ==="
 if $START_REASON2; then
-    echo "  reason2:  GPU=$R2_GPU_LAYERS THREADS=$R2_THREADS BATCH=$R2_BATCH CTX=$R2_CTX FLASH=$R2_FLASH"
+    echo "  reason2:  GPU=$R2_GPU_LAYERS THREADS=$R2_THREADS BATCH=$R2_BATCH CTX=$R2_CTX FLASH=$R2_FLASH PARALLEL=$R2_PARALLEL"
 fi
 if $START_MOONDREAM2; then
-    echo "  moondream2: GPU=$MD_GPU_LAYERS THREADS=$MD_THREADS BATCH=$MD_BATCH CTX=$MD_CTX FLASH=$MD_FLASH"
+    echo "  moondream2: GPU=$MD_GPU_LAYERS THREADS=$MD_THREADS BATCH=$MD_BATCH CTX=$MD_CTX FLASH=$MD_FLASH PARALLEL=$MD_PARALLEL"
 fi
 if $START_YOLO; then
     echo "  yolo:      PyTorch + ultralytics (no llama params)"
