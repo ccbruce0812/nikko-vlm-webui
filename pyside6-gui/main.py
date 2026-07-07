@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt, QTimer
 
 from src.ui.kiosk_window import KioskWindow
+from src.modules.video_source import VideoSource
 
 PID_FILE = "/tmp/pyside6-gui.pid"
 
@@ -60,10 +61,40 @@ def _handle_signal(sig, frame):
 
 
 def _parse_args():
-    p = argparse.ArgumentParser(description="Kiosk VLM GUI")
+    p = argparse.ArgumentParser(
+        description="Kiosk VLM GUI",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  python main.py                                           # interactive mode
+  python main.py --play --camera-id 0 --resolution 3280x2464@21 \\
+                  --model reason2 --prompt "Describe this image.""")
+
+    # Display
     p.add_argument("--dpi-scale", type=float, default=2.0,
                    help="DPI scale factor (default: 2.0)")
+
+    # --play auto-start mode
+    p.add_argument("--play", action="store_true",
+                   help="Auto-start streaming and inference (skip manual START)")
+    p.add_argument("--camera-id", type=int, default=0,
+                   help="Camera device ID (default: 0)")
+    p.add_argument("--resolution", default="1920x1080",
+                   help="Resolution WxH[@FPS], e.g. 3280x2464@21 (default: 1920x1080)")
+    p.add_argument("--model", default="reason2",
+                   help="Model name: reason2, moondream2, yolo, or disable (default: reason2)")
+    p.add_argument("--interval", type=int, default=1000,
+                   help="Inference interval in ms (default: 1000)")
+    p.add_argument("--prompt", default="Describe this image in one sentence.",
+                   help="Prompt sent to VLM (default: Describe this image in one sentence.)")
+    p.add_argument("--max-tokens", type=int, default=512,
+                   help="Max response tokens 1–2048 (default: 512)")
     return p.parse_args()
+
+def _play_args_clamped(args):
+    """Clamp --play arguments to valid ranges."""
+    args.interval = max(1, args.interval)
+    args.max_tokens = max(1, min(args.max_tokens, 2048))
+    return args
 
 
 def main():
@@ -98,6 +129,17 @@ def main():
 
     window = KioskWindow()
     window.showFullScreen()
+
+    # Apply CLI args to sidebar (always), auto-start if --play
+    _play_args_clamped(args)
+    w, h, fps = VideoSource.parse_resolution(args.resolution)
+    logger.info("CLI args: %dx%d@%d model=%s interval=%d play=%s",
+                 w, h, fps, args.model, args.interval, args.play)
+    QTimer.singleShot(2000, lambda: window.apply_cli_args(
+        args.camera_id, w, h, fps,
+        args.model, args.interval, args.prompt, args.max_tokens,
+        auto_start=args.play,
+    ))
 
     # Handle Ctrl-C / SIGTERM
     signal.signal(signal.SIGINT, _handle_signal)

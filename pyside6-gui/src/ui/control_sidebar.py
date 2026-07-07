@@ -240,10 +240,10 @@ class ControlSidebar(QWidget):
         current = self.model_combo.currentText()
         self.model_combo.blockSignals(True)
         self.model_combo.clear()
-        self.model_combo.addItem("No Model")
+        self.model_combo.addItem("disable")
         for model_id, _ in models:
             self.model_combo.addItem(model_id)
-        if current and current != "No Model":
+        if current and current != "disable":
             idx = self.model_combo.findText(current)
             if idx >= 0:
                 self.model_combo.setCurrentIndex(idx)

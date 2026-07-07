@@ -16,13 +16,22 @@ GUI_DIR="${PROJECT_DIR}/pyside6-gui"
 
 # ---- help ----
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-    echo "Usage: bash scripts/10-start-pyside6-gui.sh [--dpi-scale SCALE]"
+    echo "Usage: bash scripts/10-start-pyside6-gui.sh [OPTIONS]"
     echo ""
     echo "  Launch the kiosk GUI (PySide6 fullscreen window)."
     echo "  Requires Xorg (xorg.service) and openbox.service."
     echo ""
+    echo "  All options are forwarded to main.py.  Key options:"
     echo "  --dpi-scale SCALE    Font scale factor (default: 2.0)"
-    echo "                       Font = 12 × DPI/96 × scale"
+    echo "  --play               Auto-start streaming (skip manual START)"
+    echo "  --camera-id N        Camera device ID (default: 0)"
+    echo "  --resolution WxH@FPS Resolution (default: 1920x1080)"
+    echo "  --model NAME         reason2 | moondream2 | yolo | disable (default: reason2)"
+    echo "  --interval MS        Inference interval ms (default: 1000)"
+    echo "  --prompt TEXT        Prompt sent to VLM"
+    echo "  --max-tokens N       Max response tokens (default: 512)"
+    echo ""
+    echo "  Use --help for full list: python main.py --help"
     exit 0
 fi
 

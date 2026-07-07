@@ -4,6 +4,7 @@ Orchestrates video_source, router_client, overlay modules, and system monitor.
 """
 import base64
 import logging
+import os
 import time
 
 from PySide6.QtWidgets import QMainWindow, QHBoxLayout, QWidget, QPushButton, QSizePolicy, QApplication
@@ -67,6 +68,7 @@ class KioskWindow(QMainWindow):
         self._payload_kb = 0
         self._last_overlay = ""
         self._yolo_response = None
+        self._cli_model = None   # deferred CLI model (set after router responds)
 
         # UI
         self._sidebar = ControlSidebar()
@@ -115,11 +117,121 @@ class KioskWindow(QMainWindow):
 
     # ----- start / stop -----
 
+    def _validate_play_args(self, camera_id: int, width: int, height: int,
+                            model: str):
+        """Validate --play CLI args.  Returns (camera_id, width, height, model)
+        or (None, ...) on fatal error.  Resolution is matched to nearest
+        supported; model falls back to 'disable' if not found."""
+        # 1. Camera device must exist
+        cam_path = f"/dev/video{camera_id}"
+        if not os.path.exists(cam_path):
+            logger.error("--play: camera %d not found (%s)", camera_id, cam_path)
+            print(f"[ERROR] Camera {camera_id} not found ({cam_path})",
+                  file=__import__("sys").stderr)
+            return (None, width, height, model)
+
+        # 2. Resolution — find closest supported
+        formats = VideoSource.probe_formats(camera_id)
+        supported = []
+        for f in formats:
+            fw, fh, _ = VideoSource.parse_resolution(f)
+            supported.append((fw, fh))
+
+        if not supported:
+            logger.error("--play: no formats available for camera %d", camera_id)
+            return (None, width, height, model)
+
+        # exact match?
+        matched = None
+        for fw, fh in supported:
+            if fw == width and fh == height:
+                matched = (fw, fh)
+                break
+
+        if matched is None:
+            target = width * height
+            best = min(supported, key=lambda wh: abs(wh[0] * wh[1] - target))
+            matched = best
+            logger.warning("--play: %dx%d not supported, using closest %dx%d",
+                           width, height, matched[0], matched[1])
+
+        width, height = matched
+
+        # 3. Model — fall back to 'disable'
+        sidebar = self._sidebar
+        model_idx = sidebar.model_combo.findText(model)
+        if model_idx < 0:
+            logger.warning("--play: model '%s' not available, using 'disable'", model)
+            model = "disable"
+
+        return (camera_id, width, height, model)
+
+    def apply_cli_args(self, camera_id: int, width: int, height: int, fps: int,
+                       model: str, interval: int, prompt: str, max_tokens: int,
+                       auto_start: bool = False):
+        """Validate CLI args, populate sidebar, optionally auto-start.
+        Model selection is deferred until router responds (via _cli_model)."""
+        if self._video_source is not None:
+            return
+
+        camera_id, width, height, model = self._validate_play_args(
+            camera_id, width, height, model)
+        if camera_id is None:
+            return  # fatal — logged by _validate_play_args
+
+        sidebar = self._sidebar
+
+        # Camera
+        for i in range(sidebar.camera_combo.count()):
+            if sidebar.camera_combo.itemData(i) == str(camera_id):
+                sidebar.camera_combo.setCurrentIndex(i)
+                break
+
+        # Resolution — match exact width/height (already validated)
+        res_idx = -1
+        for i in range(sidebar.res_combo.count()):
+            rw, rh, _ = VideoSource.parse_resolution(sidebar.res_combo.itemText(i))
+            if rw == width and rh == height:
+                res_idx = i
+                break
+        if res_idx < 0 and sidebar.res_combo.count() > 0:
+            res_idx = 0
+        if res_idx >= 0:
+            sidebar.res_combo.setCurrentIndex(res_idx)
+
+        # Model — try now, defer if not yet in combo
+        sidebar.model_combo.blockSignals(True)
+        model_idx = sidebar.model_combo.findText(model)
+        if model_idx >= 0:
+            sidebar.model_combo.setCurrentIndex(model_idx)
+        else:
+            self._cli_model = model   # will apply in _on_models_ready
+        sidebar.model_combo.blockSignals(False)
+
+        # Interval / prompt / max_tokens
+        sidebar.interval_edit.setText(str(interval))
+        sidebar.prompt_edit.setPlainText(prompt)
+        sidebar.tokens_edit.setText(str(max_tokens))
+
+        if auto_start:
+            logger.info("CLI: auto-starting %dx%d@%d model=%s interval=%d",
+                         width, height, fps, model, interval)
+            self._on_start(camera_id, width, height)
+
     @Slot(list)
     def _on_models_ready(self, models):
         self._sidebar.set_models(models)
+
+        # Apply deferred CLI model
+        if self._cli_model:
+            idx = self._sidebar.model_combo.findText(self._cli_model)
+            if idx >= 0:
+                self._sidebar.model_combo.setCurrentIndex(idx)
+                logger.info("CLI: model '%s' applied (router responded)", self._cli_model)
+            self._cli_model = None
+
         if not models:
-            logger.warning("No models available — select \"No Model\" for view-only")
+            logger.warning("No models available — select \"disable\" for view-only")
 
     @Slot(int, int, int)
     def _on_start(self, camera_id, width, height):
@@ -265,7 +377,7 @@ class KioskWindow(QMainWindow):
 
         params = self._sidebar.get_params()
         model = params["model"]
-        if not model or model == "No Model":
+        if not model or model == "disable":
             return
 
         if model != "yolo":
