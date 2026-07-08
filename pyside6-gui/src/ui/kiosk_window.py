@@ -370,7 +370,7 @@ class KioskWindow(QMainWindow):
 
     @Slot()
     def _on_interval_tick(self):
-        if self._latest_frame is None or self._latest_frame.isNull():
+        if self._video_source is None:
             return
         if self._pending_inference:
             return
@@ -383,15 +383,32 @@ class KioskWindow(QMainWindow):
         if model != "yolo":
             self._yolo_response = None
 
-        fn = PREPARE.get(model)
-        if fn is None:
+        # Request one fresh JPEG frame (unpause → appsink captures one → auto-re-pause)
+        self._video_source.paused = False
+        jpeg_data, iw, ih = self._video_source.latest_jpeg
+        if not jpeg_data:
             return
+
+        import base64, json
+        image_b64 = base64.b64encode(jpeg_data).decode()
+        payload = json.dumps({
+            "model": model,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": params["prompt"]},
+                    {"type": "image_url", "image_url": {
+                        "url": f"data:image/jpeg;base64,{image_b64}"
+                    }},
+                ]
+            }],
+            "max_tokens": params["max_tokens"],
+        })
         t0 = time.time()
-        payload = fn(self._latest_frame, params["prompt"], params["max_tokens"])
         self._prepare_ms += (time.time() - t0) * 1000
         self._payload_kb = len(payload) / 1024
 
-        logger.info("POST /v1/chat/completions → %s (%.0f KB)", model, self._payload_kb)
+        logger.info("POST /v1/chat/completions → %s (%.0f KB JPEG)", model, self._payload_kb)
         self._infer_start = time.time()
         self._pending_inference = True
         self._router.send_raw_payload(payload)
