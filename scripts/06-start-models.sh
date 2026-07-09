@@ -1,20 +1,29 @@
 #!/usr/bin/env bash
 # ============================================================
 # 06-start-models.sh
-# Interactive model launcher — picks one model, always starts Router.
-# Reason2 and moondream2 are mutually exclusive. YOLO can run solo
-# or paired with a VLM. WebUI and RTSP are started separately.
+# Interactive model launcher. Always starts Router.
+# All VLM models use the llama-cpp image (llama-server).
 # ============================================================
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-# ---- Defaults (from Dockerfiles) ----
+# ---- VLM defaults (llama-server params) ----
 # reason2
-R2_GPU_LAYERS=12; R2_THREADS=4; R2_BATCH=256; R2_CTX=4096; R2_FLASH=on; R2_PARALLEL=1; R2_PORT=8002
+R2_MODEL="Cosmos-Reason2-2B-heretic.IQ4_XS.gguf"
+R2_MMPROJ="mmproj-Cosmos-Reason2-2B-F16.gguf"
+R2_GPU_LAYERS=12; R2_THREADS=4; R2_BATCH=256; R2_CTX=4096
+R2_FLASH="on"; R2_PARALLEL=1; R2_PORT=8002
+R2_CACHE_K="q4_0"; R2_CACHE_V="q4_0"; R2_NO_CACHE_IDLE="on"
+
 # moondream2
-MD_GPU_LAYERS=15; MD_THREADS=4; MD_BATCH=128; MD_CTX=1024; MD_FLASH=on; MD_PARALLEL=1; MD_PORT=8001
+MD_MODEL="moondream2-q4_k.gguf"
+MD_MMPROJ="moondream2-mmproj-f16.gguf"
+MD_GPU_LAYERS=15; MD_THREADS=4; MD_BATCH=128; MD_CTX=1024
+MD_FLASH="on"; MD_PARALLEL=1; MD_PORT=8001
+MD_CACHE_K="q4_0"; MD_CACHE_V="q4_0"; MD_NO_CACHE_IDLE="on"
+
 # yolo
 YL_PORT=8003
 
@@ -22,8 +31,8 @@ usage() {
     echo "Usage: bash scripts/06-start-models.sh"
     echo ""
     echo "  Interactive model launcher."
-    echo "  Always starts Router. Pick one VLM (reason2/moondream2),"
-    echo "  YOLO, or a combo."
+    echo "  Always starts Router. Pick reason2, moondream2, YOLO, or a combo."
+    echo "  All VLMs use the llama-cpp image (llama-server)."
     exit 0
 }
 
@@ -33,7 +42,7 @@ fi
 
 # ---- 1. Power mode ----
 echo "=== Power mode ==="
-if ! sudo nvpmodel -q 2>/dev/null | grep -q "NV Power Mode: MAXN_SUPER"; then
+if ! sudo nvpmodel -q 2>/dev/null | grep -qE "25W|MAXN"; then
     echo "→ Setting mode 2 (MAXN_SUPER 25W)"
     sudo nvpmodel -m 2
 else
@@ -76,12 +85,12 @@ echo ""
 echo "============================================"
 echo " Select Model"
 echo "============================================"
-echo "  1) Reason2          (~2.6GB)"
-echo "  2) moondream2       (~2.6GB)"
-echo "  3) YOLO             (~1.5GB)"
-echo "  4) Reason2 + YOLO"
-echo "  5) moondream2 + YOLO"
-echo "  q) Router only (no model)"
+echo "  1) reason2          (llama-server)"
+echo "  2) moondream2       (llama-server)"
+echo "  3) yolo             (object detection)"
+echo "  4) reason2 + yolo"
+echo "  5) moondream2 + yolo"
+echo "  q) Router only"
 echo ""
 read -p "  Choose [1/2/3/4/5/q]: " choice
 
@@ -98,27 +107,39 @@ case "$choice" in
     *) echo "→ Router only" ;;
 esac
 
-# ---- 6. Model parameter overrides (VLM only) ----
+# ---- 6. Model parameter overrides ----
 if $START_REASON2; then
     echo ""
-    echo "=== Reason2 parameters (Enter to keep default) ==="
+    echo "=== reason2 parameters (Enter to keep default, empty=skip flag) ==="
+    read -p "  MODEL        [${R2_MODEL}]: " v; R2_MODEL="${v:-$R2_MODEL}"
+    read -p "  MMPROJ       [${R2_MMPROJ}]: " v; R2_MMPROJ="${v:-$R2_MMPROJ}"
     read -p "  N_GPU_LAYERS [${R2_GPU_LAYERS}]: " v; R2_GPU_LAYERS="${v:-$R2_GPU_LAYERS}"
-    read -p "  N_THREADS     [${R2_THREADS}]: " v; R2_THREADS="${v:-$R2_THREADS}"
+    read -p "  N_THREADS    [${R2_THREADS}]: " v; R2_THREADS="${v:-$R2_THREADS}"
     read -p "  N_BATCH      [${R2_BATCH}]: " v; R2_BATCH="${v:-$R2_BATCH}"
-    read -p "  CTX_SIZE    [${R2_CTX}]: " v; R2_CTX="${v:-$R2_CTX}"
-    read -p "  FLASH_ATTN   [${R2_FLASH}]: " v; R2_FLASH="${v:-$R2_FLASH}"
-    read -p "  N_PARALLEL  [${R2_PARALLEL}]: " v; R2_PARALLEL="${v:-$R2_PARALLEL}"
+    read -p "  CTX_SIZE     [${R2_CTX}]: " v; R2_CTX="${v:-$R2_CTX}"
+    read -p "  FLASH_ATTN   [${R2_FLASH}]: " v; R2_FLASH="${v}"
+    read -p "  N_PARALLEL   [${R2_PARALLEL}]: " v; R2_PARALLEL="${v:-$R2_PARALLEL}"
+    read -p "  PORT         [${R2_PORT}]: " v; R2_PORT="${v:-$R2_PORT}"
+    read -p "  CACHE_K      [${R2_CACHE_K}]: " v; R2_CACHE_K="${v:-$R2_CACHE_K}"
+    read -p "  CACHE_V      [${R2_CACHE_V}]: " v; R2_CACHE_V="${v:-$R2_CACHE_V}"
+    read -p "  NO_CACHE_IDLE [${R2_NO_CACHE_IDLE}]: " v; R2_NO_CACHE_IDLE="${v}"
 fi
 
 if $START_MOONDREAM2; then
     echo ""
-    echo "=== moondream2 parameters (Enter to keep default) ==="
+    echo "=== moondream2 parameters (Enter to keep default, empty=skip flag) ==="
+    read -p "  MODEL        [${MD_MODEL}]: " v; MD_MODEL="${v:-$MD_MODEL}"
+    read -p "  MMPROJ       [${MD_MMPROJ}]: " v; MD_MMPROJ="${v:-$MD_MMPROJ}"
     read -p "  N_GPU_LAYERS [${MD_GPU_LAYERS}]: " v; MD_GPU_LAYERS="${v:-$MD_GPU_LAYERS}"
-    read -p "  N_THREADS     [${MD_THREADS}]: " v; MD_THREADS="${v:-$MD_THREADS}"
+    read -p "  N_THREADS    [${MD_THREADS}]: " v; MD_THREADS="${v:-$MD_THREADS}"
     read -p "  N_BATCH      [${MD_BATCH}]: " v; MD_BATCH="${v:-$MD_BATCH}"
-    read -p "  CTX_SIZE    [${MD_CTX}]: " v; MD_CTX="${v:-$MD_CTX}"
-    read -p "  FLASH_ATTN   [${MD_FLASH}]: " v; MD_FLASH="${v:-$MD_FLASH}"
-    read -p "  N_PARALLEL  [${MD_PARALLEL}]: " v; MD_PARALLEL="${v:-$MD_PARALLEL}"
+    read -p "  CTX_SIZE     [${MD_CTX}]: " v; MD_CTX="${v:-$MD_CTX}"
+    read -p "  FLASH_ATTN   [${MD_FLASH}]: " v; MD_FLASH="${v}"
+    read -p "  N_PARALLEL   [${MD_PARALLEL}]: " v; MD_PARALLEL="${v:-$MD_PARALLEL}"
+    read -p "  PORT         [${MD_PORT}]: " v; MD_PORT="${v:-$MD_PORT}"
+    read -p "  CACHE_K      [${MD_CACHE_K}]: " v; MD_CACHE_K="${v:-$MD_CACHE_K}"
+    read -p "  CACHE_V      [${MD_CACHE_V}]: " v; MD_CACHE_V="${v:-$MD_CACHE_V}"
+    read -p "  NO_CACHE_IDLE [${MD_NO_CACHE_IDLE}]: " v; MD_NO_CACHE_IDLE="${v}"
 fi
 
 # ---- 7. Create network + start Router ----
@@ -133,40 +154,54 @@ echo "  ✓ router :8080"
 # ---- 8. Start models ----
 if $START_REASON2; then
     echo ""
-    echo "=== Starting Reason2 ==="
+    echo "=== Starting reason2 (llama-server) ==="
     sudo docker run -d --name reason2 --runtime nvidia --network vlm-net \
         -v "${PROJECT_DIR}/models/reason2:/model:ro" \
-        -e N_GPU_LAYERS="$R2_GPU_LAYERS" \
-        -e N_THREADS="$R2_THREADS" \
-        -e N_BATCH="$R2_BATCH" \
-        -e CTX_SIZE="$R2_CTX" \
-        -e FLASH_ATTN="$R2_FLASH" \
-        -e N_PARALLEL="$R2_PARALLEL" \
-        reason2
+        llama-cpp \
+        llama-server \
+            -m "/model/${R2_MODEL}" \
+            --mmproj "/model/${R2_MMPROJ}" \
+            --host 0.0.0.0 --port "${R2_PORT}" \
+            --n-gpu-layers "${R2_GPU_LAYERS}" \
+            --threads "${R2_THREADS}" \
+            --batch-size "${R2_BATCH}" \
+            --ctx-size "${R2_CTX}" \
+            ${R2_FLASH:+--flash-attn ${R2_FLASH}} \
+            --parallel "${R2_PARALLEL}" \
+            ${R2_NO_CACHE_IDLE:+--no-cache-idle-slots} \
+            --cache-type-k "${R2_CACHE_K}" --cache-type-v "${R2_CACHE_V}"
     echo "  ✓ reason2 started (loading ~35s)"
 fi
 
 if $START_MOONDREAM2; then
     echo ""
-    echo "=== Starting moondream2 ==="
+    echo "=== Starting moondream2 (llama-server) ==="
     sudo docker run -d --name moondream2 --runtime nvidia --network vlm-net \
         -v "${PROJECT_DIR}/models/moondream2:/model:ro" \
-        -e N_GPU_LAYERS="$MD_GPU_LAYERS" \
-        -e N_THREADS="$MD_THREADS" \
-        -e N_BATCH="$MD_BATCH" \
-        -e CTX_SIZE="$MD_CTX" \
-        -e FLASH_ATTN="$MD_FLASH" \
-        -e N_PARALLEL="$MD_PARALLEL" \
-        moondream2
+        llama-cpp \
+        llama-server \
+            -m "/model/${MD_MODEL}" \
+            --mmproj "/model/${MD_MMPROJ}" \
+            --host 0.0.0.0 --port "${MD_PORT}" \
+            --n-gpu-layers "${MD_GPU_LAYERS}" \
+            --threads "${MD_THREADS}" \
+            --batch-size "${MD_BATCH}" \
+            --ctx-size "${MD_CTX}" \
+            ${MD_FLASH:+--flash-attn ${MD_FLASH}} \
+            --parallel "${MD_PARALLEL}" \
+            ${MD_NO_CACHE_IDLE:+--no-cache-idle-slots} \
+            --cache-type-k "${MD_CACHE_K}" --cache-type-v "${MD_CACHE_V}"
     echo "  ✓ moondream2 started (loading ~30s)"
 fi
 
 if $START_YOLO; then
     echo ""
-    echo "=== Starting YOLO ==="
+    echo "=== Starting yolo ==="
     sudo docker run -d --name yolo --runtime nvidia --network vlm-net \
         -v "${PROJECT_DIR}/models/yolo:/model:ro" \
-        yolo
+        yolo \
+        python3 server.py \
+            --port "${YL_PORT}"
     echo "  ✓ yolo started (loading ~15s)"
 fi
 
@@ -176,7 +211,6 @@ echo "=== Waiting for models to load ==="
 EXPECTED=0
 if $START_REASON2 || $START_MOONDREAM2; then EXPECTED=$((EXPECTED + 1)); fi
 if $START_YOLO; then EXPECTED=$((EXPECTED + 1)); fi
-# Always expect at least 1 (router is queryable immediately, models take time)
 TIMEOUT=180
 INTERVAL=3
 ELAPSED=0
@@ -191,6 +225,7 @@ while [ $ELAPSED -lt $TIMEOUT ]; do
     ELAPSED=$((ELAPSED + INTERVAL))
 done
 echo ""
+
 echo ""
 echo "============================================"
 echo " Container Status"
@@ -200,13 +235,13 @@ sudo docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 echo ""
 echo "=== Model parameters ==="
 if $START_REASON2; then
-    echo "  reason2:  GPU=$R2_GPU_LAYERS THREADS=$R2_THREADS BATCH=$R2_BATCH CTX=$R2_CTX FLASH=$R2_FLASH PARALLEL=$R2_PARALLEL"
+    echo "  reason2:    MODEL=$R2_MODEL MMPROJ=$R2_MMPROJ GPU=$R2_GPU_LAYERS THREADS=$R2_THREADS BATCH=$R2_BATCH CTX=$R2_CTX FLASH=${R2_FLASH:-off} PARALLEL=$R2_PARALLEL PORT=$R2_PORT CACHE_K=$R2_CACHE_K CACHE_V=$R2_CACHE_V NO_CACHE_IDLE=${R2_NO_CACHE_IDLE:-off}"
 fi
 if $START_MOONDREAM2; then
-    echo "  moondream2: GPU=$MD_GPU_LAYERS THREADS=$MD_THREADS BATCH=$MD_BATCH CTX=$MD_CTX FLASH=$MD_FLASH PARALLEL=$MD_PARALLEL"
+    echo "  moondream2: MODEL=$MD_MODEL MMPROJ=$MD_MMPROJ GPU=$MD_GPU_LAYERS THREADS=$MD_THREADS BATCH=$MD_BATCH CTX=$MD_CTX FLASH=${MD_FLASH:-off} PARALLEL=$MD_PARALLEL PORT=$MD_PORT CACHE_K=$MD_CACHE_K CACHE_V=$MD_CACHE_V NO_CACHE_IDLE=${MD_NO_CACHE_IDLE:-off}"
 fi
 if $START_YOLO; then
-    echo "  yolo:      PyTorch + ultralytics (no llama params)"
+    echo "  yolo:       PyTorch + ultralytics (port $YL_PORT)"
 fi
 
 echo ""
