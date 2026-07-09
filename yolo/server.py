@@ -1,54 +1,24 @@
 #!/usr/bin/env python3
-"""YOLO inference server with OpenAI-compatible API. TensorRT preferred, PyTorch fallback."""
-import base64, io, json, os, time, logging
+"""YOLO inference server. Reads /model (first .engine, else first .pt)."""
+import argparse, base64, glob, io, json, os, time, logging
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [yolo] %(message)s")
 logger = logging.getLogger("yolo")
 
-ENGINE_PATH = "/model/yolov8n.engine"
-PT_PATH = "/model/yolov8n.pt"
-
-model = None
-engine_type = "PyTorch"
+MODEL_DIR = "/model"
 
 
-def load_model():
-    """Try TensorRT engine first, fall back to PyTorch."""
-    global model, engine_type
-    if os.path.exists(ENGINE_PATH):
-        from ultralytics import YOLO
-        model = YOLO(ENGINE_PATH)
-        engine_type = "TensorRT"
-        logger.info(f"Loaded TensorRT engine: {ENGINE_PATH}")
-    else:
-        from ultralytics import YOLO
-        model = YOLO(PT_PATH)
-        engine_type = "PyTorch"
-        logger.info(f"Loaded PyTorch model: {PT_PATH} (TensorRT engine not found, build with EXPORT_ENGINE=1)")
+def find_model():
+    engines = sorted(glob.glob(f"{MODEL_DIR}/*.engine"))
+    if engines:
+        return engines[0], "TensorRT"
+    pts = sorted(glob.glob(f"{MODEL_DIR}/*.pt"))
+    if pts:
+        return pts[0], "PyTorch"
+    raise FileNotFoundError(f"No .engine or .pt found in {MODEL_DIR}")
 
 
-def export_engine():
-    """Export model to TensorRT and exit."""
-    from ultralytics import YOLO
-    logger.info(f"Loading PyTorch model for export: {PT_PATH}")
-    m = YOLO(PT_PATH)
-    logger.info("Exporting to TensorRT... (this may take several minutes)")
-    m.export(format="engine", half=True, device=0, workspace=4)
-    logger.info(f"TensorRT engine saved to {ENGINE_PATH}")
-    logger.info("Export complete. Restart without EXPORT_ENGINE to use it.")
-
-
-class YOLOHandler:
-    """HTTP request handler for YOLO inference."""
-    def __init__(self, request, client_address, server):
-        from http.server import BaseHTTPRequestHandler
-        # ... using function-based server instead
-
-    def log_message(self, fmt, *args):
-        logger.info(f"{self.client_address[0]} - {fmt % args}")
-
-
-def create_app():
+def create_app(model, engine_type, port):
     from http.server import HTTPServer, BaseHTTPRequestHandler
 
     class Handler(BaseHTTPRequestHandler):
@@ -65,7 +35,7 @@ def create_app():
 
         def do_GET(self):
             if self.path == "/health":
-                return self._send_json({"status": "ok", "model": PT_PATH, "engine": engine_type})
+                return self._send_json({"status": "ok", "engine": engine_type})
             if self.path == "/v1/models":
                 return self._send_json({
                     "object": "list",
@@ -76,34 +46,26 @@ def create_app():
         def do_POST(self):
             if self.path != "/v1/chat/completions":
                 return self._send_json({"error": "not found"}, 404)
-
             try:
                 length = int(self.headers.get("Content-Length", 0))
                 body = json.loads(self.rfile.read(length))
             except Exception as e:
                 return self._send_json({"error": str(e)}, 400)
-
             try:
                 start = time.time()
-                messages = body.get("messages", [])
                 image_b64 = None
-                for msg in messages:
+                for msg in body.get("messages", []):
                     if isinstance(msg.get("content"), list):
                         for part in msg["content"]:
                             if part.get("type") == "image_url":
                                 url = part["image_url"]["url"]
                                 if url.startswith("data:image"):
                                     image_b64 = url.split(",", 1)[1]
-
                 if not image_b64:
                     return self._send_json({"error": "no image in request"}, 400)
-
-                img_bytes = base64.b64decode(image_b64)
-                img = __import__("PIL.Image").Image.open(io.BytesIO(img_bytes))
-
+                img = __import__("PIL.Image").Image.open(io.BytesIO(base64.b64decode(image_b64)))
                 results = model(img)
                 elapsed = time.time() - start
-
                 detections = []
                 for r in results:
                     for box in r.boxes:
@@ -113,35 +75,32 @@ def create_app():
                             "confidence": round(float(box.conf[0]), 4),
                             "bbox": [round(x, 1) for x in box.xyxy[0].tolist()],
                         })
-
-                result_text = json.dumps(detections, indent=2) if detections else "No objects detected."
-                n = len(detections)
-                logger.info(f"[{engine_type}] {n} objects in {elapsed*1000:.0f}ms")
-
+                text = json.dumps(detections, indent=2) if detections else "No objects detected."
+                logger.info(f"[{engine_type}] {len(detections)} objects in {elapsed*1000:.0f}ms")
                 return self._send_json({
                     "id": "yolo-" + str(int(time.time())),
                     "object": "chat.completion",
                     "created": int(time.time()),
                     "model": "yolo",
-                    "choices": [{
-                        "index": 0,
-                        "message": {"role": "assistant", "content": result_text},
-                        "finish_reason": "stop",
-                    }],
+                    "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
                     "usage": {"engine": engine_type, "latency_ms": round(elapsed * 1000, 1)},
                 })
             except Exception as e:
                 logger.error(f"Error: {e}")
                 return self._send_json({"error": str(e)}, 500)
 
-    return HTTPServer(("0.0.0.0", 8003), Handler)
+    return HTTPServer(("0.0.0.0", port), Handler)
 
 
 if __name__ == "__main__":
-    if os.environ.get("EXPORT_ENGINE") == "1":
-        export_engine()
-    else:
-        load_model()
-        logger.info(f"Model loaded ({engine_type}). Starting server on :8003")
-        server = create_app()
-        server.serve_forever()
+    parser = argparse.ArgumentParser(description="YOLO inference server. Reads models from /model.")
+    parser.add_argument("--port", type=int, default=8003, help="listen port (default: 8003)")
+    args = parser.parse_args()
+
+    model_path, engine_type = find_model()
+    from ultralytics import YOLO
+    model = YOLO(model_path)
+    logger.info(f"Loaded {engine_type}: {model_path}")
+    logger.info(f"Starting server on :{args.port}")
+    server = create_app(model, engine_type, args.port)
+    server.serve_forever()
