@@ -58,7 +58,7 @@ fi
 
 echo ""
 echo "=== 3. Check Super Mode (25W) Support ==="
-if sudo nvpmodel -q 2>/dev/null | grep -q "25W\|MAXN Super"; then
+if sudo nvpmodel -q 2>/dev/null | grep -qE "25W|MAXN"; then
     echo "✓ nvpmodel.conf already supports Super Mode (25W)"
 else
     echo "⚠ Current nvpmodel.conf only supports standard 15W MAXN"
