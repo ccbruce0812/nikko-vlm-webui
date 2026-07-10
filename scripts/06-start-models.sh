@@ -13,14 +13,14 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 # reason2
 R2_MODEL="Cosmos-Reason2-2B-heretic.IQ4_XS.gguf"
 R2_MMPROJ="mmproj-Cosmos-Reason2-2B-F16.gguf"
-R2_GPU_LAYERS=12; R2_THREADS=4; R2_BATCH=256; R2_CTX=4096
+R2_GPU_LAYERS=12; R2_THREADS=4; R2_BATCH=64; R2_UBATCH=32; R2_CTX=4096
 R2_FLASH="on"; R2_PARALLEL=1; R2_PORT=8002
 R2_CACHE_K="q4_0"; R2_CACHE_V="q4_0"; R2_NO_CACHE_IDLE="on"
 
 # moondream2
 MD_MODEL="moondream2-q4_k.gguf"
 MD_MMPROJ="moondream2-mmproj-f16.gguf"
-MD_GPU_LAYERS=15; MD_THREADS=4; MD_BATCH=128; MD_CTX=1024
+MD_GPU_LAYERS=15; MD_THREADS=4; MD_BATCH=64; MD_UBATCH=32; MD_CTX=1024
 MD_FLASH="on"; MD_PARALLEL=1; MD_PORT=8001
 MD_CACHE_K="q4_0"; MD_CACHE_V="q4_0"; MD_NO_CACHE_IDLE="on"
 
@@ -116,6 +116,7 @@ if $START_REASON2; then
     read -p "  N_GPU_LAYERS [${R2_GPU_LAYERS}]: " v; R2_GPU_LAYERS="${v:-$R2_GPU_LAYERS}"
     read -p "  N_THREADS    [${R2_THREADS}]: " v; R2_THREADS="${v:-$R2_THREADS}"
     read -p "  N_BATCH      [${R2_BATCH}]: " v; R2_BATCH="${v:-$R2_BATCH}"
+    read -p "  UBATCH_SIZE  [${R2_UBATCH}]: " v; R2_UBATCH="${v:-$R2_UBATCH}"
     read -p "  CTX_SIZE     [${R2_CTX}]: " v; R2_CTX="${v:-$R2_CTX}"
     read -p "  FLASH_ATTN   [${R2_FLASH}]: " v; R2_FLASH="${v}"
     read -p "  N_PARALLEL   [${R2_PARALLEL}]: " v; R2_PARALLEL="${v:-$R2_PARALLEL}"
@@ -133,6 +134,7 @@ if $START_MOONDREAM2; then
     read -p "  N_GPU_LAYERS [${MD_GPU_LAYERS}]: " v; MD_GPU_LAYERS="${v:-$MD_GPU_LAYERS}"
     read -p "  N_THREADS    [${MD_THREADS}]: " v; MD_THREADS="${v:-$MD_THREADS}"
     read -p "  N_BATCH      [${MD_BATCH}]: " v; MD_BATCH="${v:-$MD_BATCH}"
+    read -p "  UBATCH_SIZE  [${MD_UBATCH}]: " v; MD_UBATCH="${v:-$MD_UBATCH}"
     read -p "  CTX_SIZE     [${MD_CTX}]: " v; MD_CTX="${v:-$MD_CTX}"
     read -p "  FLASH_ATTN   [${MD_FLASH}]: " v; MD_FLASH="${v}"
     read -p "  N_PARALLEL   [${MD_PARALLEL}]: " v; MD_PARALLEL="${v:-$MD_PARALLEL}"
@@ -155,8 +157,9 @@ echo "  ✓ router :8080"
 if $START_REASON2; then
     echo ""
     echo "=== Starting reason2 (llama-server) ==="
-    sudo docker run -d --name reason2 --runtime nvidia --network vlm-net \
+    sudo docker run -d --name reason2 --runtime nvidia --network vlm-net -p 127.0.0.1:"${R2_PORT}":"${R2_PORT}" \
         -v "${PROJECT_DIR}/models/reason2:/model:ro" \
+        -e LLAMA_KV_KEEP_ONLY_ACTIVE=1 \
         llama-cpp \
         llama-server \
             -m "/model/${R2_MODEL}" \
@@ -165,6 +168,7 @@ if $START_REASON2; then
             --n-gpu-layers "${R2_GPU_LAYERS}" \
             --threads "${R2_THREADS}" \
             --batch-size "${R2_BATCH}" \
+            --ubatch-size "${R2_UBATCH}" \
             --ctx-size "${R2_CTX}" \
             ${R2_FLASH:+--flash-attn ${R2_FLASH}} \
             --parallel "${R2_PARALLEL}" \
@@ -178,6 +182,7 @@ if $START_MOONDREAM2; then
     echo "=== Starting moondream2 (llama-server) ==="
     sudo docker run -d --name moondream2 --runtime nvidia --network vlm-net \
         -v "${PROJECT_DIR}/models/moondream2:/model:ro" \
+        -e LLAMA_KV_KEEP_ONLY_ACTIVE=1 \
         llama-cpp \
         llama-server \
             -m "/model/${MD_MODEL}" \
@@ -186,6 +191,7 @@ if $START_MOONDREAM2; then
             --n-gpu-layers "${MD_GPU_LAYERS}" \
             --threads "${MD_THREADS}" \
             --batch-size "${MD_BATCH}" \
+            --ubatch-size "${MD_UBATCH}" \
             --ctx-size "${MD_CTX}" \
             ${MD_FLASH:+--flash-attn ${MD_FLASH}} \
             --parallel "${MD_PARALLEL}" \
@@ -235,10 +241,10 @@ sudo docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 echo ""
 echo "=== Model parameters ==="
 if $START_REASON2; then
-    echo "  reason2:    MODEL=$R2_MODEL MMPROJ=$R2_MMPROJ GPU=$R2_GPU_LAYERS THREADS=$R2_THREADS BATCH=$R2_BATCH CTX=$R2_CTX FLASH=${R2_FLASH:-off} PARALLEL=$R2_PARALLEL PORT=$R2_PORT CACHE_K=$R2_CACHE_K CACHE_V=$R2_CACHE_V NO_CACHE_IDLE=${R2_NO_CACHE_IDLE:-off}"
+    echo "  reason2:    MODEL=$R2_MODEL MMPROJ=$R2_MMPROJ GPU=$R2_GPU_LAYERS THREADS=$R2_THREADS BATCH=$R2_BATCH UBATCH=$R2_UBATCH CTX=$R2_CTX FLASH=${R2_FLASH:-off} PARALLEL=$R2_PARALLEL PORT=$R2_PORT CACHE_K=$R2_CACHE_K CACHE_V=$R2_CACHE_V NO_CACHE_IDLE=${R2_NO_CACHE_IDLE:-off}"
 fi
 if $START_MOONDREAM2; then
-    echo "  moondream2: MODEL=$MD_MODEL MMPROJ=$MD_MMPROJ GPU=$MD_GPU_LAYERS THREADS=$MD_THREADS BATCH=$MD_BATCH CTX=$MD_CTX FLASH=${MD_FLASH:-off} PARALLEL=$MD_PARALLEL PORT=$MD_PORT CACHE_K=$MD_CACHE_K CACHE_V=$MD_CACHE_V NO_CACHE_IDLE=${MD_NO_CACHE_IDLE:-off}"
+    echo "  moondream2: MODEL=$MD_MODEL MMPROJ=$MD_MMPROJ GPU=$MD_GPU_LAYERS THREADS=$MD_THREADS BATCH=$MD_BATCH UBATCH=$MD_UBATCH CTX=$MD_CTX FLASH=${MD_FLASH:-off} PARALLEL=$MD_PARALLEL PORT=$MD_PORT CACHE_K=$MD_CACHE_K CACHE_V=$MD_CACHE_V NO_CACHE_IDLE=${MD_NO_CACHE_IDLE:-off}"
 fi
 if $START_YOLO; then
     echo "  yolo:       PyTorch + ultralytics (port $YL_PORT)"
