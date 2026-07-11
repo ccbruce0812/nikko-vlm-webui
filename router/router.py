@@ -1,164 +1,138 @@
 #!/usr/bin/env python3
-"""
-Router: OpenAI-compatible API proxy for multi-model VLM inference.
-Routes requests to the appropriate model container based on model name.
-Dynamically discovers available models by probing backends.
+"""Router: OpenAI-compatible API proxy. Routes to model backends by name."""
 
-Endpoints:
-  GET  /v1/models          - List actually available models (probed)
-  POST /v1/chat/completions - Forward to model backend based on model name
-  GET  /health             - Health check for all backends
-"""
-
-import json
-import time
+import argparse, json, logging, os, time
 import asyncio
-import logging
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 import httpx
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [router] %(message)s")
 logger = logging.getLogger("router")
 
-app = FastAPI(title="VLM Router", version="2.0.0")
 
-# Model registry: all known backends
-MODEL_REGISTRY = {
-    "moondream2": {
-        "url": "http://moondream2:8001/v1",
-        "owned_by": "jetson",
-    },
-    "reason2": {
-        "url": "http://reason2:8002/v1",
-        "owned_by": "jetson",
-    },
-    "yolo": {
-        "url": "http://yolo:8003/v1",
-        "owned_by": "jetson",
-    },
-}
+def build_app(port: int, backends: dict, cache_ttl: int, timeout: int, connect_timeout: int):
+    _availability_cache = {}
+    client = httpx.AsyncClient(timeout=httpx.Timeout(float(timeout), connect=float(connect_timeout)))
 
-# Cache for availability checks (avoid probing on every request)
-_availability_cache = {}  # model_name -> (available: bool, timestamp: float)
-CACHE_TTL = 2.0  # seconds (short to reflect container start/stop quickly)
+    app = FastAPI(title="VLM Router", version="3.0.0")
 
-client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=5.0))
+    @app.on_event("shutdown")
+    async def _shutdown():
+        await client.aclose()
 
-
-@app.on_event("shutdown")
-async def shutdown():
-    await client.aclose()
-
-
-async def probe_backend(name: str, info: dict) -> bool:
-    """Check if a model backend is reachable. Results cached for CACHE_TTL seconds."""
-    now = time.time()
-    cached = _availability_cache.get(name)
-    if cached and (now - cached[1]) < CACHE_TTL:
-        return cached[0]
-
-    try:
-        resp = await client.get(f"{info['url']}/../health", timeout=3.0)
-        available = resp.status_code < 500
-    except Exception:
-        available = False
-
-    _availability_cache[name] = (available, now)
-    if available:
-        logger.debug(f"Backend '{name}' is available")
-    else:
-        logger.debug(f"Backend '{name}' is NOT available")
-    return available
-
-
-@app.get("/v1/models")
-async def list_models():
-    """Return actually available models (probed from backends)."""
-    models = []
-    # Probe all backends concurrently
-    tasks = {name: probe_backend(name, info) for name, info in MODEL_REGISTRY.items()}
-    results = await asyncio.gather(*tasks.values())
-    
-    for (name, info), available in zip(MODEL_REGISTRY.items(), results):
-        if available:
-            models.append({
-                "id": name,
-                "object": "model",
-                "created": 0,
-                "owned_by": info["owned_by"],
-            })
-        else:
-            logger.info(f"Model '{name}' excluded (backend unreachable)")
-
-    return JSONResponse({"object": "list", "data": models})
-
-
-@app.get("/health")
-async def health():
-    """Health check for router and all backends."""
-    status = {}
-    for name, info in MODEL_REGISTRY.items():
+    async def _probe(name: str, info: dict) -> bool:
+        now = time.time()
+        cached = _availability_cache.get(name)
+        if cached and (now - cached[1]) < cache_ttl:
+            return cached[0]
         try:
             resp = await client.get(f"{info['url']}/../health", timeout=3.0)
-            status[name] = "ok" if resp.status_code < 500 else f"status:{resp.status_code}"
-        except Exception as e:
-            status[name] = f"unreachable: {type(e).__name__}"
-    return {"router": "ok", "backends": status}
+            available = resp.status_code < 500
+        except Exception:
+            available = False
+        _availability_cache[name] = (available, now)
+        return available
 
+    def _get_vlm_backend(model: str = None):
+        """Return the base URL for a VLM backend. If model not specified, use first available."""
+        if model:
+            info = backends.get(model)
+            if not info:
+                raise HTTPException(404, f"Unknown model: {model}")
+            return info["base_url"]
+        for name, info in backends.items():
+            if name != "yolo":
+                return info["base_url"]
+        raise HTTPException(404, "No VLM backend configured")
 
-@app.post("/v1/chat/completions")
-async def chat_completions(request: Request):
-    """Proxy chat completion to the appropriate model backend."""
-    body = await request.json()
-    model_name = body.get("model", "")
+    @app.get("/v1/models")
+    async def list_models():
+        tasks = {name: _probe(name, info) for name, info in backends.items()}
+        results = await asyncio.gather(*tasks.values())
+        models = []
+        for (name, info), ok in zip(backends.items(), results):
+            if ok:
+                models.append({"id": name, "object": "model", "created": 0, "owned_by": info.get("owned_by", "jetson")})
+            else:
+                logger.info(f"Model '{name}' excluded (backend unreachable)")
+        return JSONResponse({"object": "list", "data": models})
 
-    if not model_name:
-        raise HTTPException(status_code=400, detail="Missing 'model' field")
+    @app.get("/health")
+    async def health():
+        status = {}
+        for name, info in backends.items():
+            try:
+                resp = await client.get(f"{info['url']}/../health", timeout=3.0)
+                status[name] = "ok" if resp.status_code < 500 else f"status:{resp.status_code}"
+            except Exception as e:
+                status[name] = f"unreachable: {type(e).__name__}"
+        return {"router": "ok", "backends": status}
 
-    info = MODEL_REGISTRY.get(model_name)
-    if not info:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Unknown model: {model_name}. Available: {list(MODEL_REGISTRY.keys())}",
-        )
+    @app.post("/v1/chat/completions")
+    async def chat_completions(request: Request):
+        body = await request.json()
+        model_name = body.get("model", "")
+        if not model_name:
+            raise HTTPException(400, "Missing 'model' field")
+        info = backends.get(model_name)
+        if not info:
+            raise HTTPException(404, f"Unknown model: {model_name}. Available: {list(backends.keys())}")
+        backend_url = info["url"]
+        start = time.time()
+        logger.info(f"Routing '{model_name}' → {backend_url}")
+        try:
+            resp = await client.post(f"{backend_url}/chat/completions", json=body, headers={"Content-Type": "application/json"})
+            elapsed = time.time() - start
+            logger.info(f"'{model_name}' response: {resp.status_code} ({elapsed:.2f}s)")
+            if body.get("stream"):
+                return StreamingResponse(resp.aiter_bytes(), media_type="text/event-stream", headers=dict(resp.headers))
+            return JSONResponse(content=resp.json(), status_code=resp.status_code)
+        except httpx.ConnectError:
+            raise HTTPException(503, f"Model '{model_name}' backend is not available")
+        except httpx.TimeoutException:
+            raise HTTPException(504, f"Model '{model_name}' inference timed out")
 
-    backend_url = info["url"]
-    start = time.time()
-    logger.info(f"Routing '{model_name}' → {backend_url}")
-
-    try:
-        resp = await client.post(
-            f"{backend_url}/chat/completions",
-            json=body,
-            headers={"Content-Type": "application/json"},
-        )
-        elapsed = time.time() - start
-        logger.info(f"'{model_name}' response: {resp.status_code} ({elapsed:.2f}s)")
-
-        if body.get("stream"):
-            return StreamingResponse(
-                resp.aiter_bytes(),
-                media_type="text/event-stream",
-                headers=dict(resp.headers),
-            )
-
+    @app.api_route("/slots/{path:path}", methods=["GET", "POST", "DELETE"])
+    async def slots_proxy(request: Request, path: str, model: str = Query(None)):
+        base_url = _get_vlm_backend(model)
+        target = f"{base_url}/slots/{path}"
+        qs = str(request.url.query).replace(f"model={model}&", "").replace(f"&model={model}", "").replace(f"?model={model}", "?") if model else str(request.url.query)
+        if qs and not qs.startswith("?"):
+            qs = "?" + qs
+        target += qs if qs != "?" else ""
+        logger.info(f"Slot action → {target}")
+        body = await request.body()
+        resp = await client.request(method=request.method, url=target, content=body or None, headers=dict(request.headers))
         return JSONResponse(content=resp.json(), status_code=resp.status_code)
 
-    except httpx.ConnectError:
-        logger.error(f"Cannot connect to '{model_name}' at {backend_url}")
-        raise HTTPException(
-            status_code=503,
-            detail=f"Model '{model_name}' backend is not available",
-        )
-    except httpx.TimeoutException:
-        logger.error(f"Timeout for '{model_name}'")
-        raise HTTPException(
-            status_code=504,
-            detail=f"Model '{model_name}' inference timed out",
-        )
+    return app
 
 
 if __name__ == "__main__":
+    p = argparse.ArgumentParser(description="VLM Router")
+    p.add_argument("--port", type=int, default=8080)
+    p.add_argument("--moondream2-url", default="http://moondream2:8001")
+    p.add_argument("--reason2-url", default="http://reason2:8002")
+    p.add_argument("--yolo-url", default="http://yolo:8003")
+    p.add_argument("--cache-ttl", type=int, default=2)
+    p.add_argument("--timeout", type=int, default=120)
+    p.add_argument("--connect-timeout", type=int, default=5)
+    args = p.parse_args()
+
+    backends = {}
+    if args.moondream2_url:
+        base = args.moondream2_url.rstrip("/")
+        backends["moondream2"] = {"base_url": base, "url": base + "/v1"}
+    if args.reason2_url:
+        base = args.reason2_url.rstrip("/")
+        backends["reason2"] = {"base_url": base, "url": base + "/v1"}
+    if args.yolo_url:
+        base = args.yolo_url.rstrip("/")
+        backends["yolo"] = {"base_url": base, "url": base + "/v1"}
+
+    app = build_app(args.port, backends, args.cache_ttl, args.timeout, args.connect_timeout)
+
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    logger.info(f"Router starting on :{args.port}")
+    uvicorn.run(app, host="0.0.0.0", port=args.port)
