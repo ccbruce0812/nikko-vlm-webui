@@ -340,8 +340,8 @@ class KioskWindow(QMainWindow):
         ram = snap.get("ram", 0)
 
         logger.info(
-            "in:%.1f | reason:%.0fms | GPU:%.0f%% CPU:%.0f%% RAM:%.1fG",
-            in_fps, reason, gpu, cpu_pct, ram)
+            "FPS:%.1f | GPU:%.0f%% CPU:%.0f%% RAM:%.1fG",
+            in_fps, gpu, cpu_pct, ram)
 
         self._display.set_stats({
             "fps": in_fps,
@@ -428,6 +428,7 @@ class KioskWindow(QMainWindow):
         t_now = time.time()
         self._last_reason_ms = (t_now - self._infer_start) * 1000
         self._last_overlay = response_text
+        response_text = response_text.lstrip()
 
         logger.info("← %s OK (%.0fms)", model, (t_now - self._infer_start) * 1000)
 
@@ -442,7 +443,8 @@ class KioskWindow(QMainWindow):
             self._display.set_overlay_text("")
             self._yolo_response = response_text
         else:
-            self._display.set_overlay_text(response_text)
+            reason_label = f"Elapsed: {self._last_reason_ms:.0f}ms"
+            self._display.set_overlay_text(f"{reason_label}\n{response_text}")
 
         params = self._sidebar.get_params()
         interval_ms = max(1, params["interval"])

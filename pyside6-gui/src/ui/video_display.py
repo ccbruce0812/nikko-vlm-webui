@@ -129,12 +129,11 @@ class VideoDisplay(QWidget):
             return  # stopped — hide OSD
         r = self._img_rect
         fps = self._stats.get("fps", 0)
-        reason = self._stats.get("reason", 0)
         gpu = self._stats.get("gpu", 0)
         cpu = self._stats.get("cpu", 0)
         ram = self._stats.get("ram", 0)
 
-        text = (f"in:{fps:.1f} | reason:{reason:.0f}ms | "
+        text = (f"FPS:{fps:.1f} | "
                 f"GPU:{gpu:.0f}% CPU:{cpu:.0f}% RAM:{ram:.1f}G")
 
         painter.setFont(self.font())
