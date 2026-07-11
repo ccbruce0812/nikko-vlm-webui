@@ -2,7 +2,7 @@
 # ============================================================
 # 06-start-models.sh
 # Interactive model launcher. Always starts Router.
-# All VLM models use the llama-cpp image (llama-server).
+# All VLM models use the llama-cpp image .
 # ============================================================
 set -euo pipefail
 
@@ -14,25 +14,34 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 R2_MODEL="Cosmos-Reason2-2B-heretic.IQ4_XS.gguf"
 R2_MMPROJ="mmproj-Cosmos-Reason2-2B-F16.gguf"
 R2_GPU_LAYERS=12; R2_THREADS=4; R2_BATCH=64; R2_UBATCH=32; R2_CTX=4096
-R2_FLASH="on"; R2_PARALLEL=1; R2_PORT=8002
+R2_FLASH="on"; R2_PARALLEL=1
+R2_URL="http://reason2:8002"
 R2_CACHE_K="q4_0"; R2_CACHE_V="q4_0"; R2_NO_CACHE_IDLE="on"
 
 # moondream2
 MD_MODEL="moondream2-q4_k.gguf"
 MD_MMPROJ="moondream2-mmproj-f16.gguf"
-MD_GPU_LAYERS=15; MD_THREADS=4; MD_BATCH=64; MD_UBATCH=32; MD_CTX=1024
-MD_FLASH="on"; MD_PARALLEL=1; MD_PORT=8001
+MD_GPU_LAYERS=15; MD_THREADS=4; MD_BATCH=64; MD_UBATCH=32; MD_CTX=2048
+MD_FLASH="on"; MD_PARALLEL=1
+MD_CHAT_TEMPLATE='{% for message in messages %}{% if message['\''role'\''] == '\''user'\'' %}<image>\n\nQuestion: {% for part in message['\''content'\''] %}{% if part['\''type'\''] == '\''text'\'' %}{{ part['\''text'\''] }}{% endif %}{% endfor %}\n\nAnswer: {% else %}{{ message['\''content'\''] }}{% endif %}{% endfor %}'
+MD_URL="http://moondream2:8001"
 MD_CACHE_K="q4_0"; MD_CACHE_V="q4_0"; MD_NO_CACHE_IDLE="on"
 
 # yolo
-YL_PORT=8003
+YL_URL="http://yolo:8003"
+
+# router
+RTR_PORT=8080
+RTR_CACHE_TTL=2
+RTR_TIMEOUT=120
+RTR_CONNECT_TIMEOUT=5
 
 usage() {
     echo "Usage: bash scripts/06-start-models.sh"
     echo ""
     echo "  Interactive model launcher."
     echo "  Always starts Router. Pick reason2, moondream2, YOLO, or a combo."
-    echo "  All VLMs use the llama-cpp image (llama-server)."
+    echo "  All VLMs use the llama-cpp image ."
     exit 0
 }
 
@@ -40,7 +49,7 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     usage
 fi
 
-# ---- 1. Power mode ----
+# ---- Power mode ----
 echo "=== Power mode ==="
 if ! sudo nvpmodel -q 2>/dev/null | grep -qE "25W|MAXN"; then
     echo "→ Setting mode 2 (MAXN_SUPER 25W)"
@@ -51,14 +60,14 @@ fi
 sudo jetson_clocks
 echo "✓ jetson_clocks"
 
-# ---- 2. nvargus-daemon ----
+# ---- nvargus-daemon ----
 echo ""
 echo "=== nvargus-daemon ==="
 sudo systemctl restart nvargus-daemon
 sleep 2
 echo "✓ restarted"
 
-# ---- 3. Memory tuning ----
+# ---- Memory tuning ----
 echo ""
 echo "=== Memory tuning ==="
 sudo sysctl -w vm.swappiness=10
@@ -69,7 +78,7 @@ sudo sysctl -w vm.drop_caches=3
 sudo sysctl -w vm.compact_memory=1
 echo "✓ cache dropped + memory compacted"
 
-# ---- 4. Clear old model containers ----
+# ---- Clear old model containers ----
 echo ""
 echo "=== Clearing old containers ==="
 for c in reason2 moondream2 yolo; do
@@ -80,14 +89,14 @@ for c in reason2 moondream2 yolo; do
 done
 echo "✓ old containers cleared"
 
-# ---- 5. Interactive model selection ----
+# ---- Interactive model selection ----
 echo ""
 echo "============================================"
 echo " Select Model"
 echo "============================================"
-echo "  1) reason2          (llama-server)"
-echo "  2) moondream2       (llama-server)"
-echo "  3) yolo             (object detection)"
+echo "  1) reason2          "
+echo "  2) moondream2       "
+echo "  3) yolo             "
 echo "  4) reason2 + yolo"
 echo "  5) moondream2 + yolo"
 echo "  q) Router only"
@@ -107,7 +116,7 @@ case "$choice" in
     *) echo "→ Router only" ;;
 esac
 
-# ---- 6. Model parameter overrides ----
+# ---- Model parameter overrides ----
 if $START_REASON2; then
     echo ""
     echo "=== reason2 parameters (Enter to keep default, empty=skip flag) ==="
@@ -120,7 +129,7 @@ if $START_REASON2; then
     read -p "  CTX_SIZE     [${R2_CTX}]: " v; R2_CTX="${v:-$R2_CTX}"
     read -p "  FLASH_ATTN   [${R2_FLASH}]: " v; R2_FLASH="${v}"
     read -p "  N_PARALLEL   [${R2_PARALLEL}]: " v; R2_PARALLEL="${v:-$R2_PARALLEL}"
-    read -p "  PORT         [${R2_PORT}]: " v; R2_PORT="${v:-$R2_PORT}"
+    read -p "  URL          [${R2_URL}]: " v; R2_URL="${v:-$R2_URL}"
     read -p "  CACHE_K      [${R2_CACHE_K}]: " v; R2_CACHE_K="${v:-$R2_CACHE_K}"
     read -p "  CACHE_V      [${R2_CACHE_V}]: " v; R2_CACHE_V="${v:-$R2_CACHE_V}"
     read -p "  NO_CACHE_IDLE [${R2_NO_CACHE_IDLE}]: " v; R2_NO_CACHE_IDLE="${v}"
@@ -136,35 +145,60 @@ if $START_MOONDREAM2; then
     read -p "  N_BATCH      [${MD_BATCH}]: " v; MD_BATCH="${v:-$MD_BATCH}"
     read -p "  UBATCH_SIZE  [${MD_UBATCH}]: " v; MD_UBATCH="${v:-$MD_UBATCH}"
     read -p "  CTX_SIZE     [${MD_CTX}]: " v; MD_CTX="${v:-$MD_CTX}"
-    read -p "  FLASH_ATTN   [${MD_FLASH}]: " v; MD_FLASH="${v}"
+    read -p "  FLASH_ATTN   [${MD_FLASH}]: " v; MD_FLASH="${v:-$MD_FLASH}"
+    read -p "  CHAT_TEMPLATE [${MD_CHAT_TEMPLATE:-none}]: " v; MD_CHAT_TEMPLATE="${v:-$MD_CHAT_TEMPLATE}"
     read -p "  N_PARALLEL   [${MD_PARALLEL}]: " v; MD_PARALLEL="${v:-$MD_PARALLEL}"
-    read -p "  PORT         [${MD_PORT}]: " v; MD_PORT="${v:-$MD_PORT}"
+    read -p "  URL          [${MD_URL}]: " v; MD_URL="${v:-$MD_URL}"
     read -p "  CACHE_K      [${MD_CACHE_K}]: " v; MD_CACHE_K="${v:-$MD_CACHE_K}"
     read -p "  CACHE_V      [${MD_CACHE_V}]: " v; MD_CACHE_V="${v:-$MD_CACHE_V}"
-    read -p "  NO_CACHE_IDLE [${MD_NO_CACHE_IDLE}]: " v; MD_NO_CACHE_IDLE="${v}"
+    read -p "  NO_CACHE_IDLE [${MD_NO_CACHE_IDLE}]: " v; MD_NO_CACHE_IDLE="${v:-$MD_NO_CACHE_IDLE}"
 fi
 
-# ---- 7. Create network + start Router ----
+if $START_YOLO; then
+    echo ""
+    echo "=== yolo parameters (Enter to keep default) ==="
+    read -p "  URL [${YL_URL}]: " v; YL_URL="${v:-$YL_URL}"
+fi
+
+# ---- Router parameter overrides ----
+echo ""
+echo "=== router parameters (Enter to keep default) ==="
+read -p "  PORT           [${RTR_PORT}]: " v; RTR_PORT="${v:-$RTR_PORT}"
+read -p "  CACHE_TTL      [${RTR_CACHE_TTL}]: " v; RTR_CACHE_TTL="${v:-$RTR_CACHE_TTL}"
+read -p "  TIMEOUT        [${RTR_TIMEOUT}]: " v; RTR_TIMEOUT="${v:-$RTR_TIMEOUT}"
+read -p "  CONNECT_TIMEOUT [${RTR_CONNECT_TIMEOUT}]: " v; RTR_CONNECT_TIMEOUT="${v:-$RTR_CONNECT_TIMEOUT}"
+
+# ---- Create network + start Router ----
 echo ""
 echo "=== Network + Router ==="
 sudo docker network create vlm-net 2>/dev/null || echo "  vlm-net already exists"
 
 sudo docker rm -f router 2>/dev/null || true
-sudo docker run -d --name router --network vlm-net -p 8080:8080 router
-echo "  ✓ router :8080"
+sudo docker run -d --name router --network vlm-net -p "${RTR_PORT}:${RTR_PORT}" \
+    router \
+    python3 router.py \
+        --port "${RTR_PORT}" \
+        --moondream2-url "${MD_URL}" \
+        --reason2-url "${R2_URL}" \
+        --yolo-url "${YL_URL}" \
+        --cache-ttl "${RTR_CACHE_TTL}" \
+        --timeout "${RTR_TIMEOUT}" \
+        --connect-timeout "${RTR_CONNECT_TIMEOUT}"
+echo "  ✓ router :${RTR_PORT}"
 
-# ---- 8. Start models ----
+# ---- Start models ----
 if $START_REASON2; then
     echo ""
-    echo "=== Starting reason2 (llama-server) ==="
-    sudo docker run -d --name reason2 --runtime nvidia --network vlm-net -p 127.0.0.1:"${R2_PORT}":"${R2_PORT}" \
+    echo "=== Starting reason2  ==="
+    sudo docker run -d --name reason2 --runtime nvidia --network vlm-net -p 127.0.0.1:"${R2_URL##*:}":"${R2_URL##*:}" \
         -v "${PROJECT_DIR}/models/reason2:/model:ro" \
         -e LLAMA_KV_KEEP_ONLY_ACTIVE=1 \
         llama-cpp \
         llama-server \
+            --slot-save-path /tmp \
             -m "/model/${R2_MODEL}" \
             --mmproj "/model/${R2_MMPROJ}" \
-            --host 0.0.0.0 --port "${R2_PORT}" \
+            --host 0.0.0.0 --port "${R2_URL##*:}" \
             --n-gpu-layers "${R2_GPU_LAYERS}" \
             --threads "${R2_THREADS}" \
             --batch-size "${R2_BATCH}" \
@@ -174,20 +208,22 @@ if $START_REASON2; then
             --parallel "${R2_PARALLEL}" \
             ${R2_NO_CACHE_IDLE:+--no-cache-idle-slots} \
             --cache-type-k "${R2_CACHE_K}" --cache-type-v "${R2_CACHE_V}"
-    echo "  ✓ reason2 started (loading ~35s)"
+    echo "  ✓ reason2 started"
 fi
 
 if $START_MOONDREAM2; then
     echo ""
-    echo "=== Starting moondream2 (llama-server) ==="
+    echo "=== Starting moondream2  ==="
     sudo docker run -d --name moondream2 --runtime nvidia --network vlm-net \
         -v "${PROJECT_DIR}/models/moondream2:/model:ro" \
         -e LLAMA_KV_KEEP_ONLY_ACTIVE=1 \
         llama-cpp \
         llama-server \
+            --slot-save-path /tmp \
             -m "/model/${MD_MODEL}" \
             --mmproj "/model/${MD_MMPROJ}" \
-            --host 0.0.0.0 --port "${MD_PORT}" \
+            ${MD_CHAT_TEMPLATE:+--chat-template "${MD_CHAT_TEMPLATE}"} \
+            --host 0.0.0.0 --port "${MD_URL##*:}" \
             --n-gpu-layers "${MD_GPU_LAYERS}" \
             --threads "${MD_THREADS}" \
             --batch-size "${MD_BATCH}" \
@@ -197,7 +233,7 @@ if $START_MOONDREAM2; then
             --parallel "${MD_PARALLEL}" \
             ${MD_NO_CACHE_IDLE:+--no-cache-idle-slots} \
             --cache-type-k "${MD_CACHE_K}" --cache-type-v "${MD_CACHE_V}"
-    echo "  ✓ moondream2 started (loading ~30s)"
+    echo "  ✓ moondream2 started"
 fi
 
 if $START_YOLO; then
@@ -207,11 +243,11 @@ if $START_YOLO; then
         -v "${PROJECT_DIR}/models/yolo:/model:ro" \
         yolo \
         python3 server.py \
-            --port "${YL_PORT}"
-    echo "  ✓ yolo started (loading ~15s)"
+            --port "${YL_URL##*:}"
+    echo "  ✓ yolo started"
 fi
 
-# ---- 9. Poll for models ----
+# ---- Poll for models ----
 echo ""
 echo "=== Waiting for models to load ==="
 EXPECTED=0
@@ -241,13 +277,13 @@ sudo docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 echo ""
 echo "=== Model parameters ==="
 if $START_REASON2; then
-    echo "  reason2:    MODEL=$R2_MODEL MMPROJ=$R2_MMPROJ GPU=$R2_GPU_LAYERS THREADS=$R2_THREADS BATCH=$R2_BATCH UBATCH=$R2_UBATCH CTX=$R2_CTX FLASH=${R2_FLASH:-off} PARALLEL=$R2_PARALLEL PORT=$R2_PORT CACHE_K=$R2_CACHE_K CACHE_V=$R2_CACHE_V NO_CACHE_IDLE=${R2_NO_CACHE_IDLE:-off}"
+    echo "  reason2:    MODEL=$R2_MODEL MMPROJ=$R2_MMPROJ GPU=$R2_GPU_LAYERS THREADS=$R2_THREADS BATCH=$R2_BATCH UBATCH=$R2_UBATCH CTX=$R2_CTX FLASH=${R2_FLASH:-off} PARALLEL=$R2_PARALLEL URL=$R2_URL CACHE_K=$R2_CACHE_K CACHE_V=$R2_CACHE_V NO_CACHE_IDLE=${R2_NO_CACHE_IDLE:-off}"
 fi
 if $START_MOONDREAM2; then
-    echo "  moondream2: MODEL=$MD_MODEL MMPROJ=$MD_MMPROJ GPU=$MD_GPU_LAYERS THREADS=$MD_THREADS BATCH=$MD_BATCH UBATCH=$MD_UBATCH CTX=$MD_CTX FLASH=${MD_FLASH:-off} PARALLEL=$MD_PARALLEL PORT=$MD_PORT CACHE_K=$MD_CACHE_K CACHE_V=$MD_CACHE_V NO_CACHE_IDLE=${MD_NO_CACHE_IDLE:-off}"
+    echo "  moondream2: MODEL=$MD_MODEL MMPROJ=$MD_MMPROJ GPU=$MD_GPU_LAYERS THREADS=$MD_THREADS BATCH=$MD_BATCH UBATCH=$MD_UBATCH CTX=$MD_CTX FLASH=${MD_FLASH:-off} CHAT_TEMPLATE=${MD_CHAT_TEMPLATE:-none} PARALLEL=$MD_PARALLEL URL=$MD_URL CACHE_K=$MD_CACHE_K CACHE_V=$MD_CACHE_V NO_CACHE_IDLE=${MD_NO_CACHE_IDLE:-off}"
 fi
 if $START_YOLO; then
-    echo "  yolo:       PyTorch + ultralytics (port $YL_PORT)"
+    echo "  yolo:       PyTorch + ultralytics (url $YL_URL)"
 fi
 
 echo ""
