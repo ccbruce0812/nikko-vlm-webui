@@ -30,6 +30,7 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     echo "  --interval MS        Inference interval ms (default: 1000)"
     echo "  --prompt TEXT        Prompt sent to VLM"
     echo "  --max-tokens N       Max response tokens (default: 512)"
+    echo "  --router-url URL     Router API URL (default: http://localhost:8080)"
     echo ""
     echo "  Use --help for full list: python main.py --help"
     exit 0

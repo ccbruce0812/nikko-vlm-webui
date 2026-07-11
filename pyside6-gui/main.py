@@ -89,6 +89,8 @@ def _parse_args():
                    help=f"Prompt sent to VLM (default: {repr(DEFAULTS['prompt'])})")
     p.add_argument("--max-tokens", type=int, default=DEFAULTS["max_tokens"],
                    help=f"Max response tokens 1-2048 (default: {DEFAULTS['max_tokens']})")
+    p.add_argument("--router-url", default=DEFAULTS["router_url"],
+                   help=f"Router API URL (default: {DEFAULTS['router_url']})")
     return p.parse_args()
 
 def _play_args_clamped(args):
@@ -133,15 +135,13 @@ def main():
 
     # Apply CLI args to sidebar (always), auto-start if --play
     _play_args_clamped(args)
-    if args.resolution:
-        w, h, fps = VideoSource.parse_resolution(args.resolution)
-    else:
-        w = h = fps = 0  # auto-select from UI
-    logger.info("CLI args: %s model=%s interval=%d play=%s",
-                 args.resolution or "auto", args.model, args.interval, args.play)
+    w, h, fps = VideoSource.parse_resolution(args.resolution)
+    logger.info("CLI args: %dx%d@%d model=%s interval=%d play=%s",
+                 w, h, fps, args.model, args.interval, args.play)
     QTimer.singleShot(2000, lambda: window.apply_cli_args(
         args.camera_id, w, h, fps,
         args.model, args.interval, args.prompt, args.max_tokens,
+        args.router_url,
         auto_start=args.play,
     ))
 

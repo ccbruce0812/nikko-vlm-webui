@@ -11,8 +11,6 @@ import aiohttp
 
 logger = logging.getLogger(__name__)
 
-ROUTER_URL = "http://localhost:8080"
-
 
 class RouterClient(QThread):
     """Async client: model discovery + chat completions via Router API."""
@@ -22,8 +20,9 @@ class RouterClient(QThread):
     error_occurred = Signal(str)       # error message
     status_message = Signal(str)
 
-    def __init__(self):
+    def __init__(self, router_url="http://localhost:8080"):
         super().__init__()
+        self._url = router_url
         self._loop = None
         self._pending = []  # list of (model, payload_json_str)
 
@@ -83,7 +82,7 @@ class RouterClient(QThread):
     async def _do_fetch_models(self, session):
         try:
             async with session.get(
-                f"{ROUTER_URL}/v1/models", timeout=aiohttp.ClientTimeout(total=5)
+                f"{self._url}/v1/models", timeout=aiohttp.ClientTimeout(total=5)
             ) as resp:
                 data = await resp.json()
                 models = [(m["id"], m.get("owned_by", "")) for m in data.get("data", [])]
@@ -96,7 +95,7 @@ class RouterClient(QThread):
         try:
             self.status_message.emit(f"Inferring {model}...")
             async with session.post(
-                f"{ROUTER_URL}/v1/chat/completions",
+                f"{self._url}/v1/chat/completions",
                 data=payload,
                 headers={"Content-Type": "application/json"},
                 timeout=aiohttp.ClientTimeout(total=120, connect=5),

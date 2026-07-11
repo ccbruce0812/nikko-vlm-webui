@@ -103,6 +103,7 @@ class ControlSidebar(QWidget):
         self.model_combo = QComboBox()
         self.model_combo.setItemDelegate(_DarkComboDelegate(self.model_combo))
         self.model_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.model_combo.addItem("disable")
         grid.addWidget(self.model_combo, r, 1); r += 1
 
         grid.addWidget(QLabel("Interval:"), r, 0)

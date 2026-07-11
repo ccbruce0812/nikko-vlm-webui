@@ -17,7 +17,7 @@ class VideoDisplay(QWidget):
         self._frame = None
         self._overlay_text = ""
         self._img_rect = None  # last scaled image rect for caption positioning
-        self._stats = {"gpu": 0, "cpu": 0, "ram": 0, "vram": 0}
+        self._stats = {"gpu": 0, "cpu": 0, "ram": 0}
         self._res_fps = "—"
 
     # ---- aspect ratio ----
@@ -130,14 +130,12 @@ class VideoDisplay(QWidget):
         r = self._img_rect
         fps = self._stats.get("fps", 0)
         reason = self._stats.get("reason", 0)
-        overlay = self._stats.get("overlay", 0)
         gpu = self._stats.get("gpu", 0)
         cpu = self._stats.get("cpu", 0)
         ram = self._stats.get("ram", 0)
-        vram = self._stats.get("vram", 0)
 
-        text = (f"in:{fps:.1f} | reason:{reason:.0f}ms overlay:{overlay:.0f}ms | "
-                f"GPU:{gpu:.0f}% CPU:{cpu:.0f}% RAM:{ram:.1f}G VRAM:{vram:.1f}G")
+        text = (f"in:{fps:.1f} | reason:{reason:.0f}ms | "
+                f"GPU:{gpu:.0f}% CPU:{cpu:.0f}% RAM:{ram:.1f}G")
 
         painter.setFont(self.font())
         fm = painter.fontMetrics()

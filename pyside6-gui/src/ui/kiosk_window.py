@@ -38,6 +38,7 @@ class KioskWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Kiosk VLM GUI")
+        self.setWindowFlags(Qt.FramelessWindowHint)
 
         # Global shortcuts
         QShortcut(QKeySequence("Escape"), self, self.close)
@@ -62,8 +63,7 @@ class KioskWindow(QMainWindow):
         self._fps_t0 = time.time()
         self._prepare_ms = 0.0
         self._reason_ms = 0.0
-        self._overlay_ms = 0.0
-        self._infer_count = 0
+        self._last_reason_ms = 0.0
         self._infer_start = 0.0
         self._payload_kb = 0
         self._last_overlay = ""
@@ -78,14 +78,18 @@ class KioskWindow(QMainWindow):
         self._connect_signals()
 
         # ---- Camera check: fatal if none ----
+        # Start router client
+        self._router.start()
+        QTimer.singleShot(500, self._router.fetch_models)
+        # Fallback: if router doesn't respond in 5s, ensure model list works
+        QTimer.singleShot(5000, self._on_router_timeout)
+
         if self._sidebar.camera_count() == 0:
             logger.error("No camera found — exiting")
             QTimer.singleShot(100, self.close)
             return
 
-        # Start background
-        self._router.start()
-        QTimer.singleShot(500, self._router.fetch_models)
+
 
     def _init_ui(self):
         central = QWidget()
@@ -168,7 +172,7 @@ class KioskWindow(QMainWindow):
 
     def apply_cli_args(self, camera_id: int, width: int, height: int, fps: int,
                        model: str, interval: int, prompt: str, max_tokens: int,
-                       auto_start: bool = False):
+                       router_url: str, auto_start: bool = False):
         """Validate CLI args, populate sidebar, optionally auto-start.
         Model selection is deferred until router responds (via _cli_model)."""
         if self._video_source is not None:
@@ -212,6 +216,11 @@ class KioskWindow(QMainWindow):
         sidebar.interval_edit.setText(str(interval))
         sidebar.prompt_edit.setPlainText(prompt)
         sidebar.tokens_edit.setText(str(max_tokens))
+
+        # Update router URL if different from default
+        if router_url != self._router._url:
+            self._router._url = router_url
+            self._router.fetch_models()
 
         if auto_start:
             logger.info("CLI: auto-starting %dx%d@%d model=%s interval=%d",
@@ -258,8 +267,7 @@ class KioskWindow(QMainWindow):
         self._fps_t0 = time.time()
         self._prepare_ms = 0.0
         self._reason_ms = 0.0
-        self._overlay_ms = 0.0
-        self._infer_count = 0
+        self._last_reason_ms = 0.0
 
         self._display.set_res_fps(f"{width}x{height}@{fps}")
         self._sidebar.set_streaming_state(True)
@@ -323,27 +331,21 @@ class KioskWindow(QMainWindow):
         elapsed = time.time() - self._fps_t0
         in_fps = self._input_count / max(0.1, elapsed)
 
-        n = max(1, self._infer_count)
-        reas = self._reason_ms / n
-        over = self._overlay_ms / n
+        reason = self._last_reason_ms
 
         gpu = snap.get("gpu", 0)
-        vram = snap.get("vram", 0)
         ram = snap.get("ram", 0)
 
         logger.info(
-            "in:%.1f | reason:%.0fms overlay:%.0fms | "
-            "GPU:%.0f%% CPU:%.0f%% RAM:%.1fG VRAM:%.1fG",
-            in_fps, reas, over, gpu, cpu_pct, ram, vram)
+            "in:%.1f | reason:%.0fms | GPU:%.0f%% CPU:%.0f%% RAM:%.1fG",
+            in_fps, reason, gpu, cpu_pct, ram)
 
         self._display.set_stats({
             "fps": in_fps,
             "gpu": gpu,
             "cpu": cpu_pct,
             "ram": ram,
-            "vram": vram,
-            "reason": reas,
-            "overlay": over,
+            "reason": reason,
         })
 
     # ----- frame pipeline -----
@@ -408,7 +410,7 @@ class KioskWindow(QMainWindow):
         self._prepare_ms += (time.time() - t0) * 1000
         self._payload_kb = len(payload) / 1024
 
-        logger.info("POST /v1/chat/completions → %s (%.0f KB JPEG)", model, self._payload_kb)
+        logger.info("POST /v1/chat/completions → %s (%.0f KB)", model, self._payload_kb)
         self._infer_start = time.time()
         self._pending_inference = True
         self._router.send_raw_payload(payload)
@@ -421,8 +423,7 @@ class KioskWindow(QMainWindow):
             return  # stopped, ignore late response
         self._pending_inference = False
         t_now = time.time()
-        self._reason_ms += (t_now - self._infer_start) * 1000
-        self._infer_count += 1
+        self._last_reason_ms = (t_now - self._infer_start) * 1000
         self._last_overlay = response_text
 
         logger.info("← %s OK (%.0fms)", model, (t_now - self._infer_start) * 1000)
@@ -439,7 +440,6 @@ class KioskWindow(QMainWindow):
             self._yolo_response = response_text
         else:
             self._display.set_overlay_text(response_text)
-        self._overlay_ms += (time.time() - t0) * 1000
 
         params = self._sidebar.get_params()
         interval_ms = max(1, params["interval"])
@@ -464,6 +464,15 @@ class KioskWindow(QMainWindow):
             super().keyPressEvent(event)
 
     # ----- cleanup -----
+
+    @Slot()
+    def _on_router_timeout(self):
+        """If router never responded, ensure model list has at least 'disable'."""
+        if self._sidebar.model_combo.count() == 0:
+            self._sidebar.model_combo.addItem("disable")
+        # Apply any deferred CLI model (will fall to disable if not available)
+        if self._cli_model:
+            self._on_models_ready([])
 
     def closeEvent(self, event):
         self._interval_timer.stop()
