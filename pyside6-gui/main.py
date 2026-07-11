@@ -91,6 +91,8 @@ def _parse_args():
                    help=f"Max response tokens 1-2048 (default: {DEFAULTS['max_tokens']})")
     p.add_argument("--router-url", default=DEFAULTS["router_url"],
                    help=f"Router API URL (default: {DEFAULTS['router_url']})")
+    p.add_argument("--ram-threshold", type=float, default=DEFAULTS["ram_threshold"],
+                   help=f"RAM threshold GiB for container restart (default: {DEFAULTS['ram_threshold']})")
     return p.parse_args()
 
 def _play_args_clamped(args):
@@ -141,7 +143,7 @@ def main():
     QTimer.singleShot(2000, lambda: window.apply_cli_args(
         args.camera_id, w, h, fps,
         args.model, args.interval, args.prompt, args.max_tokens,
-        args.router_url,
+        args.router_url, args.ram_threshold,
         auto_start=args.play,
     ))
 

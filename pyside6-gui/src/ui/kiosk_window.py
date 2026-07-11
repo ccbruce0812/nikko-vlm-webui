@@ -172,7 +172,7 @@ class KioskWindow(QMainWindow):
 
     def apply_cli_args(self, camera_id: int, width: int, height: int, fps: int,
                        model: str, interval: int, prompt: str, max_tokens: int,
-                       router_url: str, auto_start: bool = False):
+                       router_url: str, ram_threshold: float, auto_start: bool = False):
         """Validate CLI args, populate sidebar, optionally auto-start.
         Model selection is deferred until router responds (via _cli_model)."""
         if self._video_source is not None:
@@ -221,6 +221,9 @@ class KioskWindow(QMainWindow):
         if router_url != self._router._url:
             self._router._url = router_url
             self._router.fetch_models()
+
+        # Launch RAM monitor subprocess
+        self._start_ram_monitor(ram_threshold)
 
         if auto_start:
             logger.info("CLI: auto-starting %dx%d@%d model=%s interval=%d",
@@ -473,6 +476,23 @@ class KioskWindow(QMainWindow):
         # Apply any deferred CLI model (will fall to disable if not available)
         if self._cli_model:
             self._on_models_ready([])
+
+    def _start_ram_monitor(self, threshold: float):
+        """Launch RAM monitor subprocess (exits when this process dies)."""
+        import subprocess, os
+        script = os.path.join(os.path.dirname(__file__), "..", "..", "util", "ram_monitor.py")
+        if not os.path.exists(script):
+            logger.warning("RAM monitor script not found: %s", script)
+            return
+        env = os.environ.copy()
+        env["INVOKER_PID"] = str(os.getpid())
+        self._ram_monitor = subprocess.Popen(
+            ["python3", script, str(threshold)],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        logger.info("RAM monitor started (threshold=%.1fGiB, pid=%d)", threshold, self._ram_monitor.pid)
 
     def closeEvent(self, event):
         self._interval_timer.stop()

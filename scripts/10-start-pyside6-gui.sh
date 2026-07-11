@@ -31,6 +31,7 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     echo "  --prompt TEXT        Prompt sent to VLM"
     echo "  --max-tokens N       Max response tokens (default: 512)"
     echo "  --router-url URL     Router API URL (default: http://localhost:8080)"
+    echo "  --ram-threshold GiB  RAM threshold for container restart (default: 5.5)"
     echo ""
     echo "  Use --help for full list: python main.py --help"
     exit 0
