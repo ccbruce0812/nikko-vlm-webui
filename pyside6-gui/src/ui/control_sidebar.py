@@ -13,6 +13,7 @@ from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QFont, QColor
 
 from src.modules.video_source import VideoSource
+from src.modules.defaults import DEFAULTS
 
 
 class _DarkComboDelegate(QStyledItemDelegate):
@@ -106,20 +107,20 @@ class ControlSidebar(QWidget):
 
         grid.addWidget(QLabel("Interval:"), r, 0)
         ir = QHBoxLayout(); ir.setContentsMargins(0, 0, 0, 0)
-        self.interval_edit = QLineEdit("1000")
+        self.interval_edit = QLineEdit(str(DEFAULTS["interval"]))
         self.interval_edit.setAlignment(Qt.AlignRight)
         ir.addWidget(self.interval_edit)
         ir.addWidget(QLabel("ms"))
         grid.addLayout(ir, r, 1); r += 1
 
         grid.addWidget(QLabel("Max Tokens:"), r, 0)
-        self.tokens_edit = QLineEdit("512")
+        self.tokens_edit = QLineEdit(str(DEFAULTS["max_tokens"]))
         self.tokens_edit.setAlignment(Qt.AlignRight)
         grid.addWidget(self.tokens_edit, r, 1); r += 1
 
         grid.addWidget(QLabel("Prompt:"), r, 0); r += 1
         self.prompt_edit = QTextEdit()
-        self.prompt_edit.setPlainText("Describe this image in one sentence without coordinates or numbers.")
+        self.prompt_edit.setPlainText(DEFAULTS["prompt"])
         fm = self.prompt_edit.fontMetrics()
         self.prompt_edit.setFixedHeight((fm.height() + 4) * 10)
         self.prompt_edit.setTabChangesFocus(True)
@@ -182,12 +183,9 @@ class ControlSidebar(QWidget):
         self.res_combo.clear()
         for f in formats:
             self.res_combo.addItem(f)
-        # Prefer 1920x1080
-        idx = self.res_combo.findText("1920x1080", Qt.MatchStartsWith)
-        if idx < 0:
-            idx = self.res_combo.findText("1920x1080@30")
-        if idx >= 0:
-            self.res_combo.setCurrentIndex(idx)
+        # Select highest resolution (last item = highest WxH)
+        if self.res_combo.count() > 0:
+            self.res_combo.setCurrentIndex(self.res_combo.count() - 1)
         self.res_combo.blockSignals(False)
 
     # ----- start / stop -----

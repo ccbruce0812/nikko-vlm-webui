@@ -12,6 +12,7 @@ from PySide6.QtCore import Qt, QTimer
 
 from src.ui.kiosk_window import KioskWindow
 from src.modules.video_source import VideoSource
+from src.modules.defaults import DEFAULTS
 
 PID_FILE = "/tmp/pyside6-gui.pid"
 
@@ -76,18 +77,18 @@ def _parse_args():
     # --play auto-start mode
     p.add_argument("--play", action="store_true",
                    help="Auto-start streaming and inference (skip manual START)")
-    p.add_argument("--camera-id", type=int, default=0,
-                   help="Camera device ID (default: 0)")
-    p.add_argument("--resolution", default="1920x1080",
-                   help="Resolution WxH[@FPS], e.g. 3280x2464@21 (default: 1920x1080)")
-    p.add_argument("--model", default="reason2",
-                   help="Model name: reason2, moondream2, yolo, or disable (default: reason2)")
-    p.add_argument("--interval", type=int, default=1000,
-                   help="Inference interval in ms (default: 1000)")
-    p.add_argument("--prompt", default="Describe this image in one sentence.",
-                   help="Prompt sent to VLM (default: Describe this image in one sentence.)")
-    p.add_argument("--max-tokens", type=int, default=512,
-                   help="Max response tokens 1–2048 (default: 512)")
+    p.add_argument("--camera-id", type=int, default=DEFAULTS["camera_id"],
+                   help=f"Camera device ID (default: {DEFAULTS['camera_id']})")
+    p.add_argument("--resolution", default=DEFAULTS["resolution"],
+                   help="Resolution WxH[@FPS], e.g. 3280x2464@21 (default: auto-highest)")
+    p.add_argument("--model", default=DEFAULTS["model"],
+                   help=f"Model: reason2, moondream2, yolo, or disable (default: {DEFAULTS['model']})")
+    p.add_argument("--interval", type=int, default=DEFAULTS["interval"],
+                   help=f"Inference interval in ms (default: {DEFAULTS['interval']})")
+    p.add_argument("--prompt", default=DEFAULTS["prompt"],
+                   help=f"Prompt sent to VLM (default: {repr(DEFAULTS['prompt'])})")
+    p.add_argument("--max-tokens", type=int, default=DEFAULTS["max_tokens"],
+                   help=f"Max response tokens 1-2048 (default: {DEFAULTS['max_tokens']})")
     return p.parse_args()
 
 def _play_args_clamped(args):
@@ -132,9 +133,12 @@ def main():
 
     # Apply CLI args to sidebar (always), auto-start if --play
     _play_args_clamped(args)
-    w, h, fps = VideoSource.parse_resolution(args.resolution)
-    logger.info("CLI args: %dx%d@%d model=%s interval=%d play=%s",
-                 w, h, fps, args.model, args.interval, args.play)
+    if args.resolution:
+        w, h, fps = VideoSource.parse_resolution(args.resolution)
+    else:
+        w = h = fps = 0  # auto-select from UI
+    logger.info("CLI args: %s model=%s interval=%d play=%s",
+                 args.resolution or "auto", args.model, args.interval, args.play)
     QTimer.singleShot(2000, lambda: window.apply_cli_args(
         args.camera_id, w, h, fps,
         args.model, args.interval, args.prompt, args.max_tokens,

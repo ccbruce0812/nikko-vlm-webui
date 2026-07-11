@@ -57,8 +57,8 @@ def prepare_payload(frame: QImage, prompt: str, max_tokens: int) -> str:
         "messages": [{
             "role": "user",
             "content": [
-                {"type": "text", "text": prompt},
                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
+                {"type": "text", "text": prompt},
             ]
         }],
         "max_tokens": max_tokens,
