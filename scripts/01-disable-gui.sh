@@ -60,14 +60,9 @@ cat > ~/.config/openbox/rc.xml << 'RCEOF'
   <keyboard>
     <chainQuitKey>C-g</chainQuitKey>
   </keyboard>
-  <applications>
-    <application name="Kiosk VLM GUI" class="main.py">
-      <decor>no</decor>
-    </application>
-  </applications>
 </openbox_config>
 RCEOF
-echo "→ openbox RC configured (undecorated kiosk window)"
+echo "→ openbox RC configured"
 
 # xterm service (starts after openbox)
 sudo tee /etc/systemd/system/xterm.service > /dev/null << EOF
