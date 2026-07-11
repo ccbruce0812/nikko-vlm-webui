@@ -274,9 +274,9 @@ The GUI outputs performance stats every 5 seconds both as OSD overlay and consol
 ```
 17:58:17 [gui] Streaming 3280x2464@21 — interval 1000ms, model reason2
 17:58:19 [gui] POST /v1/chat/completions → reason2 (554 KB)
-17:58:27 [gui] in:16.3 | reason:7624ms overlay:57ms | GPU:0% CPU:71% RAM:4.2G VRAM:4.2G
-17:58:32 [gui] in:17.7 | reason:7624ms overlay:57ms | GPU:1% CPU:52% RAM:4.3G VRAM:4.3G
-17:58:37 [gui] in:17.5 | reason:7624ms overlay:57ms | GPU:0% CPU:77% RAM:4.3G VRAM:4.3G
+17:58:27 [gui] in:16.3 | reason:7624ms | GPU:0% CPU:71% RAM:4.2G VRAM:4.2G
+17:58:32 [gui] in:17.7 | reason:7624ms | GPU:1% CPU:52% RAM:4.3G VRAM:4.3G
+17:58:37 [gui] in:17.5 | reason:7624ms | GPU:0% CPU:77% RAM:4.3G VRAM:4.3G
 ^C
 17:58:40 [gui] Shutting down.
 ```

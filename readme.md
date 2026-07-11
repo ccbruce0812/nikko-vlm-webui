@@ -285,8 +285,8 @@ Default values (Jetson Orin Nano optimized):
 
 | Container | Tunable Parameters | Defaults |
 |-----------|-------------------|----------|
-| reason2 | `N_GPU_LAYERS` `N_THREADS` `N_BATCH` `CTX_SIZE` `FLASH_ATTN` | 12 / 4 / 256 / 2048 / on |
-| moondream2 | `N_GPU_LAYERS` `N_THREADS` `N_BATCH` `CTX_SIZE` `FLASH_ATTN` | 15 / 4 / 128 / 1024 / on |
+| reason2 | `GPU_LAYERS` `THREADS` `BATCH` `UBATCH` `CTX` `FLASH` `PARALLEL` `CACHE_K` `CACHE_V` `NO_CACHE_IDLE` | 12 / 4 / 64 / 32 / 2048 / on / 1 / q4_0 / q4_0 / on |
+| moondream2 | `GPU_LAYERS` `THREADS` `BATCH` `UBATCH` `CTX` `FLASH` `PARALLEL` `CACHE_K` `CACHE_V` `NO_CACHE_IDLE` | 15 / 4 / 64 / 32 / 2048 / on / 1 / q4_0 / q4_0 / on |
 | yolo | (no llama-server params) | — |
 
 ### 2. Freeing Disk Space and Memory
@@ -386,7 +386,9 @@ sudo systemctl start nvargus-daemon
 │   ├── 13-start-live-vlm-webui.sh      # start browser WebUI
 │   ├── 14-stop-live-vlm-webui.sh       # stop browser WebUI
 │   ├── 15-install-pyside6-main.sh      # pyside6-main venv + packages
-│   └── 16-start-pyside6-main.sh        # launch pyside6-main GUI
+│   ├── 16-start-pyside6-main.sh        # launch pyside6-main GUI
+│   └── 17-monitor-restart-docker.sh	# RAM monitor for restarting docker
+│   └── 
 ├── pyside6-gui/
 │   ├── main.py
 │   ├── assets/
@@ -397,6 +399,7 @@ sudo systemctl start nvargus-daemon
 │       │   ├── video_display.py
 │       │   └── control_sidebar.py
 │       └── modules/
+│           ├── defaults.py
 │           ├── video_source.py
 │           ├── router_client.py
 │           ├── yolo_overlay.py
