@@ -115,11 +115,19 @@ created by `09-install-pyside6-gui.sh`.
 ### 2. Launch
 
 ```bash
-bash scripts/10-start-pyside6-gui.sh
+bash scripts/10-start-pyside6-gui.sh [OPTIONS]
 ```
 
-- Handles Xorg/openbox lifecycle, `nvargus-daemon`, and `DISPLAY=:0` automatically
-- Kiosk fullscreen mode (undecorated window managed by openbox RC)
+Key CLI options:
+- `--play` — Auto-start streaming
+- `--perception-model yolo|disable` — Perception AI model
+- `--reasoning-model reason2|moondream2|disable` — Reasoning AI model
+- `--router-url URL` — Router API URL
+- `--ram-threshold GiB` — RAM threshold for container restart
+- `--dpi-scale`, `--camera-id`, `--resolution`, `--interval`, `--prompt`, `--max-tokens`
+
+Handles Xorg/openbox lifecycle, `nvargus-daemon`, and `DISPLAY=:0` automatically.
+Kiosk fullscreen mode with `Qt.FramelessWindowHint`.
 
 > 📄 Script: `scripts/10-start-pyside6-gui.sh`
 
