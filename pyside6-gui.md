@@ -24,8 +24,8 @@ flowchart TB
 
     subgraph Docker["Docker Containers"]
         RTR["Router :8080"]
-        MD["moondream2 :8001"]
-        R2["reason2 :8002"]
+        MD["moondream2 :8001<br/>(llama-cpp image)"]
+        R2["reason2 :8002<br/>(llama-cpp image)"]
         YL["yolo :8003"]
     end
 
@@ -48,25 +48,27 @@ flowchart TB
     end
 
     subgraph Modules["Modules"]
+        DF["defaults.py<br/>(shared config)"]
         VS["video_source.py<br/>(GStreamer pipeline)"]
         RC["router_client.py<br/>(QThread HTTP)"]
         SM["system_monitor.py<br/>(/proc + /sys)"]
     end
 
     subgraph Overlay["Overlay Modules"]
-        YO["yolo_overlay.py"]
-        R2O["reason2_overlay.py"]
-        MD2O["moondream2_overlay.py"]
+        YO["yolo_overlay.py<br/>(Perception)"]
+        R2O["reason2_overlay.py<br/>(Reasoning)"]
+        MD2O["moondream2_overlay.py<br/>(Reasoning)"]
     end
 
     Main --> Sidebar
     Main --> Display
+    Main --> DF
     Main --> VS
     Main --> RC
     Main --> SM
-    Main --> YO
-    Main --> R2O
-    Main --> MD2O
+    Main -- "per-frame" --> YO
+    Main -- "interval" --> R2O
+    Main -- "interval" --> MD2O
     VS -- "frame_ready (RGBA)" --> Main
     RC -- "result_ready / error" --> Main
     SM -- "read_stats()" --> Main
@@ -80,13 +82,12 @@ flowchart LR
     GST -->|"RGBA buffer"| App["appsink"]
 
     App -->|"QImage wrap<br/>(zero-copy)"| Display["Video Display<br/>(QPainter)"]
-    App -->|"latest RGBA bytes"| Buf["Capture Buffer"]
 
-    Buf -->|"JPEG encode<br/>(Gst.Buffer)"| B64["base64"]
-    B64 -->|"POST /v1/chat"| Router["Router API"]
+    App -->|"per-frame"| YOLO["Perception<br/>(YOLO, fire-and-forget)"]
+    YOLO -->|"bboxes"| YDraw["QPainter overlay<br/>(persistent tracking)"]
 
-    Display -->|"YOLO boxes"| YDraw["QPainter overlay<br/>(persistent tracking)"]
-    Display -->|"VLM caption"| CDraw["QPainter overlay<br/>(text bar)"]
+    App -->|"interval"| VLM["Reasoning<br/>(reason2/moondream2)"]
+    VLM -->|"Elapsed: xxxms<br/>+ caption"| CDraw["QPainter overlay<br/>(text bar)"]
 ```
 
 ### 2. Function Blocks
