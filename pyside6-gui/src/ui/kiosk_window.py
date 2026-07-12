@@ -10,7 +10,7 @@ import os
 
 from PySide6.QtWidgets import QMainWindow, QHBoxLayout, QWidget, QPushButton, QSizePolicy, QVBoxLayout, QApplication
 from PySide6.QtCore import QTimer, Slot, QThread, QBuffer, Qt
-from PySide6.QtGui import QImage, QShortcut, QKeySequence
+from PySide6.QtGui import QImage
 
 from src.ui.control_sidebar import ControlSidebar
 from src.ui.video_display import VideoDisplay
@@ -40,8 +40,6 @@ class KioskWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Kiosk VLM GUI")
         self.setWindowFlags(Qt.FramelessWindowHint)
-
-        QShortcut(QKeySequence("Escape"), self, self.close)
 
         self._video_source = None
         self._router = RouterClient()
@@ -384,25 +382,6 @@ class KioskWindow(QMainWindow):
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
         logger.info("RAM monitor started (threshold=%.1fGiB, pid=%d)", threshold, self._ram_monitor.pid)
-
-    # ----- keyboard -----
-
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Q and (event.modifiers() & Qt.AltModifier):
-            self.close()
-        elif event.key() == Qt.Key_S and (event.modifiers() & Qt.AltModifier):
-            self._on_toggle()
-        else:
-            super().keyPressEvent(event)
-
-    def _on_toggle(self):
-        if self._video_source is None:
-            cam_id = self._sidebar.camera_combo.currentData() or 0
-            w, h, _ = VideoSource.parse_resolution(
-                self._sidebar.res_combo.currentText())
-            self._on_start(cam_id, w, h)
-        else:
-            self._on_stop()
 
     def closeEvent(self, event):
         self._interval_timer.stop()

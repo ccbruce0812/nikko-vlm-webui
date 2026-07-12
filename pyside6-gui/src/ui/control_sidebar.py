@@ -154,6 +154,16 @@ class ControlSidebar(QWidget):
         btn_layout.addWidget(self.quit_btn)
         grid.addLayout(btn_layout, r, 0, 1, 2); r += 1
 
+        # Tab focus order: top to bottom
+        self.setTabOrder(self.camera_combo, self.res_combo)
+        self.setTabOrder(self.res_combo, self.perception_combo)
+        self.setTabOrder(self.perception_combo, self.reasoning_combo)
+        self.setTabOrder(self.reasoning_combo, self.interval_edit)
+        self.setTabOrder(self.interval_edit, self.tokens_edit)
+        self.setTabOrder(self.tokens_edit, self.prompt_edit)
+        self.setTabOrder(self.prompt_edit, self.start_btn)
+        self.setTabOrder(self.start_btn, self.quit_btn)
+
         grid.setRowStretch(r, 1)
 
     def _connect_signals(self):
