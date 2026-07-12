@@ -237,9 +237,7 @@ Starts Router (always), then interactively pick a model:
 bash scripts/08-test-quick.sh
 ```
 
-Queries Router for available models, then runs one-shot inferences only on models
-that are actually running. Test image is `test/test_bus.jpg` — the script skips
-any model container that isn't up.
+Queries Router for available models, then runs batch inferences across all running models\nusing 30 test images (`test/test_01.jpg` ~ `test/test_30.jpg`). Reports success/empty/error\ncounts per model.
 
 > 📄 Script: `scripts/08-test-quick.sh`
 
