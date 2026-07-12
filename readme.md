@@ -351,13 +351,13 @@ sudo systemctl start nvargus-daemon
 ├── router/
 │   ├── Dockerfile
 │   └── router.py
-├── reason2/
-│   └── Dockerfile
-├── moondream2/
-│   └── Dockerfile
+├── llama-cpp/
+│   ├── Dockerfile
+│   └── llama-cpp-binaries.tgz
 ├── yolo/
 │   ├── Dockerfile
-│   └── yolo_server.py
+│   ├── server.py
+│   └── make-engine.py
 ├── live-vlm-webui/
 │   ├── Dockerfile
 │   └── patch_gpu_monitor.py
@@ -369,7 +369,9 @@ sudo systemctl start nvargus-daemon
 │   ├── moondream2/
 │   └── yolo/
 ├── test/
-│   └── test_bus.jpg
+│   ├── test_01.jpg
+│   ⋮
+│   └── test_30.jpg
 ├── scripts/
 │   ├── 01-disable-gui.sh               # disable GUI + enable Xorg/openbox
 │   ├── 02-system-config.sh             # CSI camera + Super Mode 25W + NVMap + memory tuning
@@ -378,7 +380,7 @@ sudo systemctl start nvargus-daemon
 │   ├── 05-build-all.sh                 # build all containers
 │   ├── 06-start-models.sh              # interactive model launcher (router + model)
 │   ├── 07-stop-models.sh               # stop all models + remove vlm-net
-│   ├── 08-test-quick.sh                # quick model validation
+│   ├── 08-test-quick.sh                # batch model validation (30 test images)
 │   ├── 09-install-pyside6-gui.sh       # pyside6-gui venv + packages
 │   ├── 10-start-pyside6-gui.sh         # launch kiosk GUI
 │   ├── 11-start-rtsp-server.sh         # start RTSP Server (CSI camera, optional)
@@ -386,13 +388,13 @@ sudo systemctl start nvargus-daemon
 │   ├── 13-start-live-vlm-webui.sh      # start browser WebUI
 │   ├── 14-stop-live-vlm-webui.sh       # stop browser WebUI
 │   ├── 15-install-pyside6-main.sh      # pyside6-main venv + packages
-│   ├── 16-start-pyside6-main.sh        # launch pyside6-main GUI
-│   └── 17-monitor-restart-docker.sh	# RAM monitor for restarting docker
-│   └── 
+│   └── 16-start-pyside6-main.sh        # launch pyside6-main GUI
 ├── pyside6-gui/
 │   ├── main.py
 │   ├── assets/
 │   │   └── style.qss
+│   ├── util/
+│   │   └── ram_monitor.py
 │   └── src/
 │       ├── ui/
 │       │   ├── kiosk_window.py
