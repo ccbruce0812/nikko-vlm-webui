@@ -354,27 +354,38 @@ YOLO response is parsed as JSON; class name and confidence are drawn on each box
 sequenceDiagram
     participant GST as GStreamer Pipeline
     participant UI as MainWindow (UI Thread)
-    participant Timer as Interval Timer
-    participant Mod as Overlay Module<br/>(yolo / reason2 / moondream2)
+    participant PTimer as Perception<br/>(per-frame)
+    participant RTimer as Reasoning<br/>(interval)
+    participant Mod as Overlay Module
     participant RTR as Router :8080
-    participant Backend as Model Container<br/>(reason2 / moondream2 / yolo)
+    participant Backend as Model Container
 
     GST->>UI: frame_ready (RGBA, every ~33ms)
     activate UI
-    UI->>UI: wrap QImage → QPainter → QPixmap → display
+    UI->>UI: draw YOLO bboxes + set_frame()
+
+    rect rgb(40, 60, 40)
+        note right of UI: Perception (fire-and-forget)
+        UI->>PTimer: maybe_fire(yolo)
+        PTimer->>Mod: prepare payload (JPEG + prompt)
+        Mod-->>PTimer: JSON payload
+        PTimer->>RTR: POST /v1/chat/completions (async)
+    end
     deactivate UI
 
     loop Every N ms (Interval)
-        Timer->>UI: tick
-        activate UI
-        UI->>Mod: latest RGBA frame + prompt/max_tokens
-        activate Mod
-        Mod->>Mod: resize frame, build API payload
-        Mod-->>UI: JSON payload
-        deactivate Mod
-        UI->>RTR: POST /v1/chat/completions (async, non-blocking)
-        UI->>UI: continue rendering video
-        deactivate UI
+        rect rgb(60, 40, 40)
+            note right of UI: Reasoning (interval)
+            RTimer->>UI: tick
+            activate UI
+            UI->>Mod: latest frame + prompt
+            activate Mod
+            Mod->>Mod: resize, build API payload
+            Mod-->>UI: JSON payload
+            deactivate Mod
+            UI->>RTR: POST /v1/chat/completions (async)
+            deactivate UI
+        end
 
         RTR->>Backend: forward request
         activate Backend
@@ -382,20 +393,18 @@ sequenceDiagram
         deactivate Backend
         RTR-->>UI: JSON response (async callback)
         activate UI
-        UI->>Mod: response + current live frame
-        activate Mod
-        Mod->>Mod: YOLO: draw boxes / VLM: draw caption bar
-        Mod-->>UI: annotated frame
-        deactivate Mod
-        UI->>UI: update display with overlay
+        alt YOLO
+            UI->>Mod: draw bboxes + persist
+        else VLM
+            UI->>UI: caption "Elapsed: xxxms\n{text}"
+        end
         deactivate UI
     end
 ```
 
-- The GStreamer pipeline emits frames continuously; the UI never blocks waiting for inference.
-- At each interval tick, the latest frame is captured and sent to the Router asynchronously via `aiohttp` in a background `QThread`.
-- When the response arrives, the overlay module draws on the **current live frame** (not the original captured frame) — the display always shows up-to-date video.
-- If a new interval tick fires before the previous response arrives, the tick is skipped (`_pending` guard) — no queue build-up.
+- YOLO requests fire per-frame (non-blocking, fire-and-forget). Bboxes update independently from reasoning.
+- Reasoning requests fire at intervals. Requests are skipped if a previous one is still pending.
+- Both pipelines share the same RouterClient with concurrent request support.
 
 ## Troubleshooting
 
