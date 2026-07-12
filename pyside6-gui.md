@@ -190,27 +190,13 @@ Kiosk fullscreen mode with `Qt.FramelessWindowHint`.
 - Press **STOP** to halt all inference.
 - Press **QUIT** to exit.
 
-### 4. Keyboard Navigation
+### 5. Keyboard Navigation
 
 All controls support standard Qt keyboard navigation:
 
-- **Tab** / **Shift+Tab**: move focus between controls in logical order (Camera ID → Resolution → Model → Interval → Prompt → Max Tokens → START → QUIT)
-- **Space**: toggle checkboxes, activate focused buttons
+- **Tab** / **Shift+Tab**: move focus between controls in logical order (Camera ID → Resolution → Perception Model → Reasoning Model → Interval → Prompt → Max Tokens → START → QUIT)
+- **Space**: activate focused buttons
 - **Arrow keys**: navigate QComboBox dropdown items
-- **Ctrl+Tab**: move focus out of QTextEdit (Prompt field)
-
-| Widget | Accelerator | Action |
-|--------|------------|--------|
-| START / STOP | `Alt+S` | Toggle streaming |
-| QUIT | `Alt+Q` | Exit application |
-| Camera ID | `Alt+C` | Focus camera dropdown |
-| Resolution | `Alt+R` | Focus resolution dropdown |
-| Model | `Alt+M` | Focus model dropdown |
-| Interval | `Alt+I` | Focus interval field |
-| Prompt | `Alt+P` | Focus prompt textarea |
-| Max Tokens | `Alt+T` | Focus max tokens field |
-
-Accelerator keys use `QPushButton::setShortcut()` / `QLabel::setBuddy()` and are displayed with underlined characters in button labels (e.g., **_S**TART, **_Q**UIT).
 
 ## OSD Overlay and Performance
 
