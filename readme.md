@@ -196,8 +196,8 @@ The server auto-detects the `.engine` file and uses TensorRT for faster inferenc
 bash scripts/05-build-all.sh
 ```
 
-Builds all containers from Dockerfiles: router, live-vlm-webui, reason2, moondream2,
-yolo, and rtsp-server. The base image `dustynv/l4t-pytorch:r36.4.0` is pulled once.
+Builds all containers from Dockerfiles: router, llama-cpp (reason2 + moondream2 share this image),\nyolo, live-vlm-webui, and rtsp-server. The base image `dustynv/l4t-pytorch:r36.4.0` is pulled once
+for llama-cpp and yolo.
 
 > 📄 Script: `scripts/05-build-all.sh`
 
