@@ -142,47 +142,53 @@ Kiosk fullscreen mode with `Qt.FramelessWindowHint`.
 
 **Pipeline:** `nvarguscamerasrc` with NVMM zero-copy. FPS is auto-detected from hardware capabilities via `v4l2-ctl`.
 
-### 2. AI Model
+### 2. Perception AI
 
 | Control | Type | Default | Description |
 |---------|------|---------|-------------|
-| Model | QComboBox | (first available) | Populated from `GET /v1/models` on startup |
-| Processing Interval | QLineEdit (≥1) | 1000 | Milliseconds between inference requests |
-| Prompt | QTextEdit | `"Describe this image in one sentence."` | Prompt sent to VLM (ignored by YOLO) |
+| Model | QComboBox | yolo/disable | Object detection. Fire-and-forget per-frame. |
+
+### 3. Reasoning AI
+
+| Control | Type | Default | Description |
+|---------|------|---------|-------------|
+| Model | QComboBox | reason2/disable | VLM caption. Interval-based inference. |
+| Interval | QLineEdit (≥1) | 1000 | Milliseconds between reasoning requests |
+| Prompt | QTextEdit | `"Describe this image..."` | Prompt sent to VLM |
 | Max Tokens | QLineEdit (1–2048) | 512 | Response token limit |
 
-### 3. Control
+### 4. Control
 
 ```
-┌─ Left Sidebar (1/6) ───────┬─ Video Display (5/6) ────────────────────┐
-│                            │                                          │
-│  Video Source              │    ┌──────────────────────────────────┐  │
-│  Camera ID:  [0 ▼]         │    │   in:29.0 | reason:0ms overlay:… │  │
-│  Res/FPS:    [1920x1080@30]│    │   GPU:45% CPU:62% RAM:3.8G VRAM:…│  │
-│                            │    │                                  │  │
-│                            │    │                                  │  │
-│  AI Model                  │    │                                  │  │
-│  Model:      [reason2 ▼]   │    │                                  │  │
-│  Interval:   [1000] ms     │    │                                  │  │
-│  Prompt:                   │    │            Live Video            │  │
-│  ┌──────────────────────┐  │    │                                  │  │
-│  │Describe this image...│  │    │                                  │  │
-│  │                      │  │    │ ┌──────────────────────────────┐ │  │
-│  └──────────────────────┘  │    │ │ person 0.87                  │ │  │
-│  Max Tokens: [512]         │    │ │                              │ │  │
-│       [▶ START]  [✕ QUIT] │    │ └──────────────────────────────┘ │  │
-│                            │    └──────────────────────────────────┘  │
-│                            │                                          │
-└────────────────────────────┴──────────────────────────────────────────┘
+┌─ Left Sidebar (1/6) ────────┬─ Video Display (5/6) ────────────────────┐
+│                             │                                          │
+│  Camera                     │    ┌──────────────────────────────────┐  │
+│  Camera ID:  [0 ▼]          │    │   FPS:29.0 | GPU:45% CPU:62%     │  │
+│  Res/FPS:    [1920x1080@30] │    │   RAM:3.8G                       │  │
+│  ─────────────────────────  │    │                                  │  │
+│  Perception AI              │    │                                  │  │
+│  Model:      [yolo ▼]       │    │                                  │  │
+│  ─────────────────────────  │    │ ┌──────────────┐                 │  │
+│  Reasoning AI               │    │ │ person 0.87  │                 │  │
+│  Model:      [reason2 ▼]    │    │ │              │                 │  │
+│  Interval:   [1000] ms      │    │ │              │                 │  │
+│  Prompt:                    │    │ │              │                 │  │
+│  ┌──────────────────────┐   │    │ └──────────────┘                 │  │
+│  │Describe this image...│   │    │                                  │  │
+│  └──────────────────────┘   │    │ ┌──────────────────────────────┐ │  │
+│  Max Tokens: [512]          │    │ │ Elapsed: 5772ms              │ │  │
+│       [▶ START]  [✕ QUIT]  │    │ │ A blue bus parked on a...    │ │  │
+│                             │    │ └──────────────────────────────┘ │  │
+└─────────────────────────────┴────┴──────────────────────────────────┴──┘
 ```
 
 - Select camera and resolution.
-- Pick an AI model from the dropdown (auto-populated from router).
+- Choose a Perception AI model (YOLO, per-frame fire-and-forget).
+- Choose a Reasoning AI model (reason2/moondream2, interval-based).
 - Set interval, prompt, and max tokens.
-- Press **START** or hit `Alt+S`. The button changes to **STOP**.
-- Video streams continuously. At each interval, a snapshot is sent to the Router API.
-- Press **STOP** (`Alt+S`) to halt streaming and inference.
-- Press **QUIT** (`Alt+Q`) or close the window to exit.
+- Press **START** to begin streaming and inference.
+- Press **STOP** to halt all inference.
+- Press **QUIT** to exit.
 
 ### 4. Keyboard Navigation
 
