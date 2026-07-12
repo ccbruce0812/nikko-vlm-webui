@@ -27,9 +27,9 @@ flowchart LR
         Router["Router<br/>:8080"]
     end
 
-    subgraph Models["Models"]
-        Moon["moondream2 GGUF<br/>:8001"]
-        Cosmos["Reason2 GGUF<br/>:8002"]
+    subgraph Models["Models (llama-cpp image)"]
+        Moon["moondream2<br/>:8001"]
+        Cosmos["reason2<br/>:8002"]
         YOLO["YOLO<br/>:8003"]
     end
 
@@ -208,8 +208,8 @@ All containers on `vlm-net` bridged network.  Router and RTSP server also expose
 | Image | Container | Port | Accessible via | Purpose | API / Protocol |
 |-------|-----------|------|---------------|---------|----------------|
 | `router` | `router` | 8080 | host + vlm-net | API gateway, dynamic model detection | `GET http://<host>:8080/v1/models`<br>`POST http://<host>:8080/v1/chat/completions` |
-| `moondream2` | `moondream2` | 8001 | vlm-net only | moondream2 GGUF inference (llama-server) | `POST http://<host>:8001/v1/chat/completions` — image + text → text |
-| `reason2` | `reason2` | 8002 | vlm-net only | Reason2 GGUF inference (llama-server) | `POST http://<host>:8002/v1/chat/completions` — image + text → text |
+| `llama-cpp` | `moondream2` | 8001 | vlm-net only | moondream2 GGUF inference (llama-server, shared image) | `POST http://<host>:8001/v1/chat/completions` — image + text → text |
+| `llama-cpp` | `reason2` | 8002 | vlm-net only | reason2 GGUF inference (llama-server, shared image) | `POST http://<host>:8002/v1/chat/completions` — image + text → text |
 | `yolo` | `yolo` | 8003 | vlm-net only | YOLOv8n object detection (TensorRT auto, PyTorch fallback) | `POST http://<host>:8003/v1/chat/completions` — image → JSON `[{name, confidence, bbox}]` |
 | `live-vlm-webui` | `live-vlm-webui` | 8090 | host (--network host) | Web frontend, WebRTC + RTSP relay | Browser `http://<host>:8090` → WebRTC (ICE/DTLS/SCTP/SRTP). See [live-vlm-webui.md](live-vlm-webui.md). |
 | `rtsp-server` | `rtsp-server` | 8554 | host (--network host) | CSI camera RTSP stream (IMX219, nvarguscamerasrc → H.264) | `rtsp://<host>:8554/stream` — H.264 over RTP/UDP |
