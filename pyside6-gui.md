@@ -273,32 +273,28 @@ YOLO handles "No objects detected." responses gracefully (no overlay drawn, no w
 The GUI outputs performance stats every 5 seconds both as OSD overlay and console log:
 
 ```
-17:58:17 [gui] Streaming 3280x2464@21 — interval 1000ms, model reason2
-17:58:19 [gui] POST /v1/chat/completions → reason2 (554 KB)
-17:58:27 [gui] in:16.3 | reason:7624ms | GPU:0% CPU:71% RAM:4.2G VRAM:4.2G
-17:58:32 [gui] in:17.7 | reason:7624ms | GPU:1% CPU:52% RAM:4.3G VRAM:4.3G
-17:58:37 [gui] in:17.5 | reason:7624ms | GPU:0% CPU:77% RAM:4.3G VRAM:4.3G
+17:58:17 [gui] Streaming 1920x1080@30 perception=yolo reasoning=reason2 interval=1000ms
+17:58:19 [gui] POST → reason2 (554 KB)
+17:58:27 [gui] ← reason2 OK (7624ms)
+17:58:27 [gui] FPS:16.3 | GPU:0% CPU:71% RAM:4.2G
+17:58:32 [gui] FPS:17.7 | GPU:1% CPU:52% RAM:4.3G
 ^C
 17:58:40 [gui] Shutting down.
 ```
 
 | Field | Source | Description |
 |---|---|---|
-| `in` | frame counter / elapsed | Average input FPS from camera |
-| `reason` | cumulative / count | Average inference wall-clock time (POST → full response) |
-| `overlay` | cumulative / count | Average overlay drawing time (GUI: measured via synchronous `repaint()`) |
-| `GPU` | `/sys/devices/platform/gpu.0/load` | GPU utilization % (instantaneous sample) |
+| `FPS` | frame counter / elapsed | Input FPS from camera |
+| `GPU` | `/sys/devices/platform/gpu.0/load` | GPU utilization % |
 | `CPU` | `/proc/stat` delta | CPU utilization % |
 | `RAM` | `/proc/meminfo` | System RAM used (GiB) |
-| `VRAM` | = RAM | Unified memory on Jetson Orin Nano |
 
 No jetson-stats dependency — pure `/proc` + `/sys` only.
 
-Inference result text is **not** printed to the console/log (only the stats line). POST events
-are logged separately on their own line.
+Inference result text is **not** printed to the console/log (only the stats line). POST/response
+events are logged separately.
 
-All counters (`_input_count`, `_reason_ms`, `_overlay_ms`, `_infer_count`) reset to zero on each
-**Start** to provide clean per-session averages.
+All counters reset to zero on each **Start** to provide clean per-session values.
 
 ## Router Integration
 
