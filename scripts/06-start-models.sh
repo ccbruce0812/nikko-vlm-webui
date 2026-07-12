@@ -195,7 +195,6 @@ if $START_REASON2; then
         -e LLAMA_KV_KEEP_ONLY_ACTIVE=1 \
         llama-cpp \
         llama-server \
-            --slot-save-path /tmp \
             -m "/model/${R2_MODEL}" \
             --mmproj "/model/${R2_MMPROJ}" \
             --host 0.0.0.0 --port "${R2_URL##*:}" \
@@ -219,7 +218,6 @@ if $START_MOONDREAM2; then
         -e LLAMA_KV_KEEP_ONLY_ACTIVE=1 \
         llama-cpp \
         llama-server \
-            --slot-save-path /tmp \
             -m "/model/${MD_MODEL}" \
             --mmproj "/model/${MD_MMPROJ}" \
             ${MD_CHAT_TEMPLATE:+--chat-template "${MD_CHAT_TEMPLATE}"} \
