@@ -2,8 +2,6 @@
 Left sidebar control panel.
 Grid layout — uniform spacing, no QGroupBox padding issues.
 """
-import os
-import re
 from PySide6.QtWidgets import (
     QWidget, QGridLayout, QHBoxLayout, QLabel,
     QComboBox, QLineEdit, QTextEdit, QPushButton, QSizePolicy,
@@ -11,9 +9,6 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QFont, QColor
-
-from src.modules.video_source import VideoSource
-from src.modules.defaults import DEFAULTS
 
 
 def _hline():
@@ -25,8 +20,6 @@ def _hline():
 
 
 class _DarkComboDelegate(QStyledItemDelegate):
-    """Custom delegate: dark background, hover highlight for combo items."""
-
     def paint(self, painter, option, index):
         if option.state & QStyle.State_MouseOver:
             painter.fillRect(option.rect, QColor("#3a3a3a"))
@@ -36,8 +29,7 @@ class _DarkComboDelegate(QStyledItemDelegate):
             painter.fillRect(option.rect, QColor("#444"))
         painter.setPen(QColor("#ddd"))
         painter.drawText(option.rect.adjusted(6, 0, -6, 0),
-                         Qt.AlignLeft | Qt.AlignVCenter,
-                         index.data())
+                         Qt.AlignLeft | Qt.AlignVCenter, index.data())
 
 
 class ControlSidebar(QWidget):
@@ -52,16 +44,15 @@ class ControlSidebar(QWidget):
     prompt_changed = Signal(str)
     max_tokens_changed = Signal(int)
 
-    def __init__(self, parent=None):
+    def __init__(self, config: dict, parent=None):
         super().__init__(parent)
         self._streaming = False
+        self._config = config
         self._init_ui()
         self._connect_signals()
-        self._refresh_devices()
 
     def _init_ui(self):
         grid = QGridLayout(self)
-
         from PySide6.QtWidgets import QApplication
         sw = QApplication.primaryScreen().size().width() if QApplication.instance() else 1920
         sp = max(6, int(sw * 2 / 5 * 0.02))
@@ -70,9 +61,9 @@ class ControlSidebar(QWidget):
         grid.setColumnStretch(0, 0)
         grid.setColumnStretch(1, 1)
 
-        bold = QFont()
-        bold.setBold(True)
+        bold = QFont(); bold.setBold(True)
         r = 0
+        cfg = self._config
 
         # ---- Camera ----
         hdr = QLabel("Camera"); hdr.setFont(bold)
@@ -90,6 +81,20 @@ class ControlSidebar(QWidget):
         self.res_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         grid.addWidget(self.res_combo, r, 1); r += 1
 
+        # Fill camera combos from config
+        from src.modules.video_source import VideoSource
+        for name, dev_id in VideoSource.scan_devices():
+            self.camera_combo.addItem(name, dev_id)
+        formats = VideoSource.probe_formats(str(cfg["camera_id"]))
+        for f in formats:
+            self.res_combo.addItem(f)
+        # Set defaults
+        idx = self.res_combo.findText(cfg["resolution_text"], Qt.MatchStartsWith)
+        if idx >= 0:
+            self.res_combo.setCurrentIndex(idx)
+        else:
+            self.res_combo.setCurrentIndex(self.res_combo.count() - 1)
+
         grid.setRowMinimumHeight(r, 8); r += 1
         grid.addWidget(_hline(), r, 0, 1, 2); r += 1
 
@@ -101,7 +106,11 @@ class ControlSidebar(QWidget):
         self.perception_combo = QComboBox()
         self.perception_combo.setItemDelegate(_DarkComboDelegate(self.perception_combo))
         self.perception_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.perception_combo.addItem("disable")
+        for opt in cfg["perception_options"]:
+            self.perception_combo.addItem(opt)
+        p_idx = self.perception_combo.findText(cfg["perception_default"])
+        if p_idx >= 0:
+            self.perception_combo.setCurrentIndex(p_idx)
         grid.addWidget(self.perception_combo, r, 1); r += 1
 
         grid.setRowMinimumHeight(r, 8); r += 1
@@ -115,25 +124,29 @@ class ControlSidebar(QWidget):
         self.reasoning_combo = QComboBox()
         self.reasoning_combo.setItemDelegate(_DarkComboDelegate(self.reasoning_combo))
         self.reasoning_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.reasoning_combo.addItem("disable")
+        for opt in cfg["reasoning_options"]:
+            self.reasoning_combo.addItem(opt)
+        r_idx = self.reasoning_combo.findText(cfg["reasoning_default"])
+        if r_idx >= 0:
+            self.reasoning_combo.setCurrentIndex(r_idx)
         grid.addWidget(self.reasoning_combo, r, 1); r += 1
 
         grid.addWidget(QLabel("Interval:"), r, 0)
         ir = QHBoxLayout(); ir.setContentsMargins(0, 0, 0, 0)
-        self.interval_edit = QLineEdit(str(DEFAULTS["interval"]))
+        self.interval_edit = QLineEdit(str(cfg["interval"]))
         self.interval_edit.setAlignment(Qt.AlignRight)
         ir.addWidget(self.interval_edit)
         ir.addWidget(QLabel("ms"))
         grid.addLayout(ir, r, 1); r += 1
 
         grid.addWidget(QLabel("Max Tokens:"), r, 0)
-        self.tokens_edit = QLineEdit(str(DEFAULTS["max_tokens"]))
+        self.tokens_edit = QLineEdit(str(cfg["max_tokens"]))
         self.tokens_edit.setAlignment(Qt.AlignRight)
         grid.addWidget(self.tokens_edit, r, 1); r += 1
 
         grid.addWidget(QLabel("Prompt:"), r, 0); r += 1
         self.prompt_edit = QTextEdit()
-        self.prompt_edit.setPlainText(DEFAULTS["prompt"])
+        self.prompt_edit.setPlainText(cfg["prompt"])
         fm = self.prompt_edit.fontMetrics()
         self.prompt_edit.setFixedHeight((fm.height() + 4) * 8)
         self.prompt_edit.setTabChangesFocus(True)
@@ -154,7 +167,7 @@ class ControlSidebar(QWidget):
         btn_layout.addWidget(self.quit_btn)
         grid.addLayout(btn_layout, r, 0, 1, 2); r += 1
 
-        # Tab focus order: top to bottom
+        # Tab order
         self.setTabOrder(self.camera_combo, self.res_combo)
         self.setTabOrder(self.res_combo, self.perception_combo)
         self.setTabOrder(self.perception_combo, self.reasoning_combo)
@@ -167,7 +180,6 @@ class ControlSidebar(QWidget):
         grid.setRowStretch(r, 1)
 
     def _connect_signals(self):
-        self.camera_combo.currentIndexChanged.connect(self._on_camera_changed)
         self.perception_combo.currentTextChanged.connect(
             lambda t: self.perception_changed.emit(t))
         self.reasoning_combo.currentTextChanged.connect(
@@ -177,43 +189,13 @@ class ControlSidebar(QWidget):
             lambda: self.prompt_changed.emit(self.prompt_edit.toPlainText()))
         self.tokens_edit.textChanged.connect(self._on_tokens_changed)
 
-    # ----- device / resolution -----
-
-    def _refresh_devices(self):
-        self.camera_combo.blockSignals(True)
-        self.camera_combo.clear()
-        for name, dev_id in VideoSource.scan_devices():
-            self.camera_combo.addItem(name, dev_id)
-        self.camera_combo.blockSignals(False)
-        if self.camera_combo.count() > 0:
-            self._on_camera_changed(0)
-
-    def camera_count(self):
-        return self.camera_combo.count()
-
-    def _on_camera_changed(self, index):
-        dev_id = self.camera_combo.itemData(index)
-        if dev_id is None:
-            return
-        formats = VideoSource.probe_formats(dev_id)
-        self.res_combo.blockSignals(True)
-        self.res_combo.clear()
-        for f in formats:
-            self.res_combo.addItem(f)
-        if self.res_combo.count() > 0:
-            self.res_combo.setCurrentIndex(self.res_combo.count() - 1)
-        self.res_combo.blockSignals(False)
-
-    # ----- start / stop -----
-
     def _on_start_stop(self):
         if self._streaming:
             self.stop_clicked.emit()
         else:
-            dev_id = self.camera_combo.currentData()
-            if dev_id is None:
-                return
+            dev_id = self.camera_combo.currentData() or 0
             res_text = self.res_combo.currentText()
+            from src.modules.video_source import VideoSource
             w, h, _ = VideoSource.parse_resolution(res_text)
             self.start_clicked.emit(int(dev_id), w, h)
 
@@ -222,8 +204,6 @@ class ControlSidebar(QWidget):
         self.start_btn.setText("STOP" if streaming else "START")
         self.camera_combo.setEnabled(not streaming)
         self.res_combo.setEnabled(not streaming)
-
-    # ----- validation -----
 
     def _on_interval_changed(self, text):
         try:
@@ -239,44 +219,10 @@ class ControlSidebar(QWidget):
 
     def _on_tokens_changed(self, text):
         try:
-            val = int(text)
-            val = max(1, min(val, 2048))
+            val = max(1, min(int(text), 2048))
             self.max_tokens_changed.emit(val)
         except ValueError:
             pass
-
-    # ----- public helpers -----
-
-    def set_models(self, models):
-        """Split model list into perception (yolo) and reasoning (others)."""
-        perception = [(m_id, owner) for m_id, owner in models if m_id == "yolo"]
-        reasoning = [(m_id, owner) for m_id, owner in models if m_id != "yolo"]
-
-        # Perception
-        current_p = self.perception_combo.currentText()
-        self.perception_combo.blockSignals(True)
-        self.perception_combo.clear()
-        self.perception_combo.addItem("disable")
-        for m_id, _ in perception:
-            self.perception_combo.addItem(m_id)
-        if current_p and current_p != "disable":
-            idx = self.perception_combo.findText(current_p)
-            if idx >= 0:
-                self.perception_combo.setCurrentIndex(idx)
-        self.perception_combo.blockSignals(False)
-
-        # Reasoning
-        current_r = self.reasoning_combo.currentText()
-        self.reasoning_combo.blockSignals(True)
-        self.reasoning_combo.clear()
-        self.reasoning_combo.addItem("disable")
-        for m_id, _ in reasoning:
-            self.reasoning_combo.addItem(m_id)
-        if current_r and current_r != "disable":
-            idx = self.reasoning_combo.findText(current_r)
-            if idx >= 0:
-                self.reasoning_combo.setCurrentIndex(idx)
-        self.reasoning_combo.blockSignals(False)
 
     def get_params(self):
         try:
@@ -291,6 +237,9 @@ class ControlSidebar(QWidget):
             "perception_model": self.perception_combo.currentText(),
             "reasoning_model": self.reasoning_combo.currentText(),
             "interval": max(1, interval),
-            "prompt": self.prompt_edit.toPlainText().strip() or "Describe this image in one sentence.",
+            "prompt": self.prompt_edit.toPlainText().strip() or "Describe this image.",
             "max_tokens": max(1, min(max_tokens, 2048)),
         }
+
+    def camera_count(self):
+        return self.camera_combo.count()

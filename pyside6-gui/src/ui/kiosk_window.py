@@ -1,15 +1,11 @@
 """
 Kiosk main window: sidebar + video display.
-Orchestrates video_source, router_client, overlay modules, system monitor.
 Dual pipeline: perception (per-frame) + reasoning (interval-based).
 """
-import base64
-import logging
-import time
-import os
+import logging, time, os
 
-from PySide6.QtWidgets import QMainWindow, QHBoxLayout, QWidget, QPushButton, QSizePolicy, QVBoxLayout, QApplication
-from PySide6.QtCore import QTimer, Slot, QThread, QBuffer, Qt
+from PySide6.QtWidgets import QMainWindow, QHBoxLayout, QWidget, QSizePolicy, QVBoxLayout
+from PySide6.QtCore import QTimer, Slot, Qt
 from PySide6.QtGui import QImage
 
 from src.ui.control_sidebar import ControlSidebar
@@ -26,23 +22,20 @@ PREPARE = {
 }
 DRAW = {
     "yolo": yolo_overlay.draw_overlay,
-    "reason2": reason2_overlay.draw_overlay,
-    "moondream2": moondream2_overlay.draw_overlay,
 }
 
 logger = logging.getLogger("gui")
 
 
 class KioskWindow(QMainWindow):
-    """Single-window kiosk GUI with dual perception/reasoning AI pipeline."""
-
-    def __init__(self):
+    def __init__(self, config: dict):
         super().__init__()
         self.setWindowTitle("Kiosk VLM GUI")
         self.setWindowFlags(Qt.FramelessWindowHint)
+        self._config = config
 
         self._video_source = None
-        self._router = RouterClient()
+        self._router = RouterClient(config["router_url"])
 
         self._interval_timer = QTimer(self)
         self._interval_timer.timeout.connect(self._on_interval_tick)
@@ -52,39 +45,32 @@ class KioskWindow(QMainWindow):
         self._prev_cpu_snap = None
         self._params = {}
         self._latest_frame = None
-        self._cli_perception = None
-        self._cli_reasoning = None
-        self._models_received = False
 
         self._input_count = 0
         self._fps_t0 = time.time()
         self._last_reason_ms = 0.0
         self._infer_start = 0.0
-        self._payload_kb = 0
 
         # Perception
         self._yolo_response = None
         self._pending_perception = False
         self._percept_start = 0.0
-        self._perception_active = True
+        self._perception_active = config["perception_default"] != "disable"
 
         # Reasoning
         self._pending_inference = False
-        self._reasoning_active = True
+        self._reasoning_active = config["reasoning_default"] != "disable"
 
-        self._sidebar = ControlSidebar()
+        self._sidebar = ControlSidebar(config)
         self._display = VideoDisplay()
         self._init_ui()
         self._connect_signals()
 
-        if self._sidebar.camera_count() == 0:
-            logger.error("No camera found — exiting")
-            QTimer.singleShot(100, self.close)
-            return
-
         self._router.start()
-        QTimer.singleShot(500, self._router.fetch_models)
-        QTimer.singleShot(5000, self._on_router_timeout)
+        self._start_ram_monitor(config["ram_threshold"])
+
+        if config["auto_start"]:
+            QTimer.singleShot(500, self._cli_auto_start)
 
     def _init_ui(self):
         central = QWidget()
@@ -108,48 +94,25 @@ class KioskWindow(QMainWindow):
         self._sidebar.quit_clicked.connect(self.close)
         self._sidebar.perception_changed.connect(self._on_perception_changed)
         self._sidebar.reasoning_changed.connect(self._on_reasoning_changed)
-        self._router.models_ready.connect(self._on_models_ready)
         self._router.result_ready.connect(self._on_inference_result)
         self._router.error_occurred.connect(self._on_router_error)
 
-    # ----- models ready -----
-
-    @Slot(list)
-    def _on_models_ready(self, models):
-        self._models_received = True
-        self._sidebar.set_models(models)
-        if not models:
-            logger.warning("No models available")
-
-        if self._cli_perception:
-            idx = self._sidebar.perception_combo.findText(self._cli_perception)
-            if idx >= 0:
-                self._sidebar.perception_combo.setCurrentIndex(idx)
-                logger.info("CLI: perception '%s' applied", self._cli_perception)
-            self._cli_perception = None
-        if self._cli_reasoning:
-            idx = self._sidebar.reasoning_combo.findText(self._cli_reasoning)
-            if idx >= 0:
-                self._sidebar.reasoning_combo.setCurrentIndex(idx)
-                logger.info("CLI: reasoning '%s' applied", self._cli_reasoning)
-            self._cli_reasoning = None
-
-    @Slot()
-    def _on_router_timeout(self):
-        if self._models_received:
-            return
-
     # ----- start / stop -----
+
+    def _cli_auto_start(self):
+        dev_id = self._sidebar.camera_combo.currentData() or 0
+        w = self._config["resolution_w"]
+        h = self._config["resolution_h"]
+        self._on_start(dev_id, w, h)
 
     @Slot(int, int, int)
     def _on_start(self, camera_id, width, height):
         params = self._sidebar.get_params()
-        params["width"] = width
-        params["height"] = height
+        self._params = params
+        self._params["width"] = width
+        self._params["height"] = height
         res_text = self._sidebar.res_combo.currentText()
         _, _, fps = VideoSource.parse_resolution(res_text)
-        params["fps"] = fps
-        self._params = params
 
         self._input_count = 0
         self._fps_t0 = time.time()
@@ -190,7 +153,7 @@ class KioskWindow(QMainWindow):
     def _on_video_status(self, msg):
         logger.info(msg)
 
-    # ----- frame pipeline -----
+    # ----- frame pipeline: perception per-frame -----
 
     @Slot(bytes, int, int)
     def _on_frame(self, data, w, h):
@@ -199,24 +162,18 @@ class KioskWindow(QMainWindow):
         qimage = QImage(data, w, h, w * 4, QImage.Format_RGBA8888)
         self._input_count += 1
 
-        # Draw YOLO bbox from previous response
         annotated = qimage
         if self._yolo_response:
             fn = DRAW.get("yolo")
             if fn:
                 annotated = fn(qimage.copy(), self._yolo_response)
 
-        # Fire perception (fire-and-forget)
         self._maybe_fire_perception(qimage)
-
-        # Display
         self._display.set_frame(annotated)
-
-        # Save for reasoning tick
         self._latest_frame = qimage
 
     def _maybe_fire_perception(self, qimage):
-        if self._pending_perception:
+        if self._pending_perception or not self._perception_active:
             return
         p_model = self._sidebar.perception_combo.currentText()
         if p_model == "disable" or p_model not in PREPARE:
@@ -235,7 +192,7 @@ class KioskWindow(QMainWindow):
     def _on_interval_tick(self):
         if self._latest_frame is None or self._latest_frame.isNull():
             return
-        if self._pending_inference:
+        if self._pending_inference or not self._reasoning_active:
             return
         r_model = self._sidebar.reasoning_combo.currentText()
         if r_model == "disable" or r_model not in PREPARE:
@@ -243,13 +200,12 @@ class KioskWindow(QMainWindow):
         fn = PREPARE[r_model]
         payload = fn(self._latest_frame, self._params.get("prompt", ""),
                      self._params.get("max_tokens", 512))
-        self._payload_kb = len(payload) / 1024
-        logger.info("POST → %s (%.0f KB)", r_model, self._payload_kb)
+        logger.info("POST → %s (%.0f KB)", r_model, len(payload) / 1024)
         self._infer_start = time.time()
         self._pending_inference = True
         self._router.send_raw_payload(payload)
 
-    # ----- model change handlers -----
+    # ----- model change -----
 
     @Slot(str)
     def _on_perception_changed(self, model):
@@ -296,8 +252,6 @@ class KioskWindow(QMainWindow):
                 f"Elapsed: {self._last_reason_ms:.0f}ms\n{response_text}")
             self._interval_timer.start(self._params.get("interval", 1000))
 
-    # ----- errors -----
-
     @Slot(str)
     def _on_router_error(self, msg):
         self._pending_inference = False
@@ -320,51 +274,6 @@ class KioskWindow(QMainWindow):
             "fps": in_fps, "gpu": gpu, "cpu": cpu_pct, "ram": ram,
             "reason": self._last_reason_ms,
         })
-
-    # ----- CLI args -----
-
-    def apply_cli_args(self, camera_id: int, width: int, height: int, fps: int,
-                       perception_model: str, reasoning_model: str,
-                       interval: int, prompt: str, max_tokens: int,
-                       router_url: str, ram_threshold: float,
-                       auto_start: bool = False):
-        sidebar = self._sidebar
-
-        sidebar.perception_combo.blockSignals(True)
-        p_idx = sidebar.perception_combo.findText(perception_model)
-        if p_idx >= 0:
-            sidebar.perception_combo.setCurrentIndex(p_idx)
-        else:
-            self._cli_perception = perception_model
-        sidebar.perception_combo.blockSignals(False)
-
-        sidebar.reasoning_combo.blockSignals(True)
-        r_idx = sidebar.reasoning_combo.findText(reasoning_model)
-        if r_idx >= 0:
-            sidebar.reasoning_combo.setCurrentIndex(r_idx)
-        else:
-            self._cli_reasoning = reasoning_model
-        sidebar.reasoning_combo.blockSignals(False)
-
-        sidebar.interval_edit.setText(str(interval))
-        sidebar.prompt_edit.setPlainText(prompt)
-        sidebar.tokens_edit.setText(str(max_tokens))
-
-        if router_url != self._router._url:
-            self._router._url = router_url
-            sidebar.reasoning_combo.clear()
-            sidebar.reasoning_combo.addItem("disable")
-            sidebar.perception_combo.clear()
-            sidebar.perception_combo.addItem("disable")
-            self._router.fetch_models()
-
-        self._start_ram_monitor(ram_threshold)
-
-        if auto_start:
-            logger.info("CLI: auto-start %dx%d@%d perception=%s reasoning=%s interval=%d",
-                         width, height, fps, perception_model, reasoning_model, interval)
-            dev_id = sidebar.camera_combo.currentData() or 0
-            self._on_start(int(dev_id), width, height)
 
     # ----- RAM monitor -----
 
