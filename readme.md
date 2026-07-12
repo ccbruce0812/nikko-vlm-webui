@@ -222,10 +222,10 @@ All containers on `vlm-net` bridged network.  Router and RTSP server also expose
 bash scripts/06-start-models.sh
 ```
 
-Starts Router (always), then interactively pick a model:
-- **Reason2** or **moondream2** (VLM, mutually exclusive)
-- **YOLO** (object detection, can run solo or paired with a VLM)
-- Each VLM shows its default parameters (GPU layers, threads, batch, ctx, flash-attn) — press Enter to keep defaults or type new values
+Starts Router (always), then interactively pick models:
+- **reason2** and/or **moondream2** (VLM, share the same `llama-cpp` image, can run together)
+- **YOLO** (object detection, can run solo or paired)
+- Each model shows its default parameters — press Enter to keep defaults or type new values
 - Automatically handles power mode, nvargus-daemon restart, and memory tuning
 
 > 📄 Start: `scripts/06-start-models.sh`
@@ -253,11 +253,9 @@ Queries Router for available models, then runs batch inferences across all runni
 | Metric | Reason2 IQ4_XS | moondream2 q4_k | YOLO |
 |--------|----------------|-----------------|------|
 | Model size | LLM 970MB + mmproj 782MB | LLM 877MB + mmproj 868MB | 6.5MB |
-| Image size | ~2GB (pre-built binaries) | ~2GB (pre-built binaries) | 13.3GB |
-| Build time | ~30 min (from source) | ~30 sec (binaries) | ~85 sec |
-| Prompt speed | 72.9 tok/s | 299 tok/s | — |
-| Generation speed | 19.5 tok/s | 22.7 tok/s | — |
-| Chat Template | qwen3vl (native) | moondream2 custom Jinja | — |
+| Prompt speed | 72.9 tok/s | ~170 tok/s | — |
+| Generation speed | 19.5 tok/s | ~25 tok/s | — |
+| Chat Template | qwen3vl (native) | Question/Answer Jinja | — |
 | Purpose | VLM description | VLM description | Object detection |
 
 ## Memory Usage
