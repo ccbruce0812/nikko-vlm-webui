@@ -284,7 +284,7 @@ Default values (Jetson Orin Nano optimized):
 | Container | Tunable Parameters | Defaults |
 |-----------|-------------------|----------|
 | reason2 | `GPU_LAYERS` `THREADS` `BATCH` `UBATCH` `CTX` `FLASH` `PARALLEL` `CACHE_K` `CACHE_V` `NO_CACHE_IDLE` | 12 / 4 / 64 / 32 / 2048 / on / 1 / q4_0 / q4_0 / on |
-| moondream2 | `GPU_LAYERS` `THREADS` `BATCH` `UBATCH` `CTX` `FLASH` `PARALLEL` `CACHE_K` `CACHE_V` `NO_CACHE_IDLE` | 15 / 4 / 64 / 32 / 2048 / on / 1 / q4_0 / q4_0 / on |
+| moondream2 | `GPU_LAYERS` `THREADS` `BATCH` `UBATCH` `CTX` `FLASH` `CHAT_TEMPLATE` `PARALLEL` `CACHE_K` `CACHE_V` `NO_CACHE_IDLE` | 15 / 4 / 64 / 32 / 2048 / on / Question/Answer / 1 / q4_0 / q4_0 / on |
 | yolo | (no llama-server params) | — |
 
 ### 2. Freeing Disk Space and Memory
