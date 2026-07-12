@@ -1,5 +1,5 @@
 """
-Left sidebar control panel (1/6 width).
+Left sidebar control panel.
 Grid layout — uniform spacing, no QGroupBox padding issues.
 """
 import os
@@ -16,19 +16,24 @@ from src.modules.video_source import VideoSource
 from src.modules.defaults import DEFAULTS
 
 
+def _hline():
+    sep = QFrame()
+    sep.setFrameShape(QFrame.HLine)
+    sep.setFrameShadow(QFrame.Sunken)
+    sep.setStyleSheet("color: #444;")
+    return sep
+
+
 class _DarkComboDelegate(QStyledItemDelegate):
     """Custom delegate: dark background, hover highlight for combo items."""
 
     def paint(self, painter, option, index):
-        # Hover highlight
         if option.state & QStyle.State_MouseOver:
             painter.fillRect(option.rect, QColor("#3a3a3a"))
         else:
             painter.fillRect(option.rect, QColor("#2a2a2a"))
-        # Selected item
         if option.state & QStyle.State_Selected:
             painter.fillRect(option.rect, QColor("#444"))
-        # Text
         painter.setPen(QColor("#ddd"))
         painter.drawText(option.rect.adjusted(6, 0, -6, 0),
                          Qt.AlignLeft | Qt.AlignVCenter,
@@ -36,12 +41,13 @@ class _DarkComboDelegate(QStyledItemDelegate):
 
 
 class ControlSidebar(QWidget):
-    """Kiosk sidebar: camera/model controls in uniform grid."""
+    """Kiosk sidebar: camera / perception / reasoning controls."""
 
     start_clicked = Signal(int, int, int)
     stop_clicked = Signal()
     quit_clicked = Signal()
-    model_changed = Signal(str)
+    perception_changed = Signal(str)
+    reasoning_changed = Signal(str)
     interval_changed = Signal(int)
     prompt_changed = Signal(str)
     max_tokens_changed = Signal(int)
@@ -56,7 +62,6 @@ class ControlSidebar(QWidget):
     def _init_ui(self):
         grid = QGridLayout(self)
 
-        # Spacing = 5% of sidebar width (sidebar = 2/5 of screen)
         from PySide6.QtWidgets import QApplication
         sw = QApplication.primaryScreen().size().width() if QApplication.instance() else 1920
         sp = max(6, int(sw * 2 / 5 * 0.02))
@@ -69,8 +74,8 @@ class ControlSidebar(QWidget):
         bold.setBold(True)
         r = 0
 
-        # ---- Section: Video Source ----
-        hdr = QLabel("Video Source"); hdr.setFont(bold)
+        # ---- Camera ----
+        hdr = QLabel("Camera"); hdr.setFont(bold)
         grid.addWidget(hdr, r, 0, 1, 2); r += 1
 
         grid.addWidget(QLabel("Camera ID:"), r, 0)
@@ -85,26 +90,33 @@ class ControlSidebar(QWidget):
         self.res_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         grid.addWidget(self.res_combo, r, 1); r += 1
 
-        grid.setRowMinimumHeight(r, 12); r += 1  # spacer row
+        grid.setRowMinimumHeight(r, 8); r += 1
+        grid.addWidget(_hline(), r, 0, 1, 2); r += 1
 
-        # Separator line
-        sep = QFrame()
-        sep.setFrameShape(QFrame.HLine)
-        sep.setFrameShadow(QFrame.Sunken)
-        sep.setStyleSheet("color: #444;")
-        grid.addWidget(sep, r, 0, 1, 2)
-        r += 1
-
-        # ---- Section: AI Model ----
-        hdr2 = QLabel("AI Model"); hdr2.setFont(bold)
+        # ---- Perception AI ----
+        hdr2 = QLabel("Perception AI"); hdr2.setFont(bold)
         grid.addWidget(hdr2, r, 0, 1, 2); r += 1
 
         grid.addWidget(QLabel("Model:"), r, 0)
-        self.model_combo = QComboBox()
-        self.model_combo.setItemDelegate(_DarkComboDelegate(self.model_combo))
-        self.model_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.model_combo.addItem("disable")
-        grid.addWidget(self.model_combo, r, 1); r += 1
+        self.perception_combo = QComboBox()
+        self.perception_combo.setItemDelegate(_DarkComboDelegate(self.perception_combo))
+        self.perception_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.perception_combo.addItem("disable")
+        grid.addWidget(self.perception_combo, r, 1); r += 1
+
+        grid.setRowMinimumHeight(r, 8); r += 1
+        grid.addWidget(_hline(), r, 0, 1, 2); r += 1
+
+        # ---- Reasoning AI ----
+        hdr3 = QLabel("Reasoning AI"); hdr3.setFont(bold)
+        grid.addWidget(hdr3, r, 0, 1, 2); r += 1
+
+        grid.addWidget(QLabel("Model:"), r, 0)
+        self.reasoning_combo = QComboBox()
+        self.reasoning_combo.setItemDelegate(_DarkComboDelegate(self.reasoning_combo))
+        self.reasoning_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.reasoning_combo.addItem("disable")
+        grid.addWidget(self.reasoning_combo, r, 1); r += 1
 
         grid.addWidget(QLabel("Interval:"), r, 0)
         ir = QHBoxLayout(); ir.setContentsMargins(0, 0, 0, 0)
@@ -123,19 +135,12 @@ class ControlSidebar(QWidget):
         self.prompt_edit = QTextEdit()
         self.prompt_edit.setPlainText(DEFAULTS["prompt"])
         fm = self.prompt_edit.fontMetrics()
-        self.prompt_edit.setFixedHeight((fm.height() + 4) * 10)
+        self.prompt_edit.setFixedHeight((fm.height() + 4) * 8)
         self.prompt_edit.setTabChangesFocus(True)
         grid.addWidget(self.prompt_edit, r, 0, 1, 2); r += 1
 
-        grid.setRowMinimumHeight(r, 6); r += 1  # spacer
-
-        # Separator line
-        sep2 = QFrame()
-        sep2.setFrameShape(QFrame.HLine)
-        sep2.setFrameShadow(QFrame.Sunken)
-        sep2.setStyleSheet("color: #444;")
-        grid.addWidget(sep2, r, 0, 1, 2)
-        r += 1
+        grid.setRowMinimumHeight(r, 8); r += 1
+        grid.addWidget(_hline(), r, 0, 1, 2); r += 1
 
         # ---- Buttons ----
         btn_layout = QHBoxLayout(); btn_layout.setContentsMargins(0, 0, 0, 0)
@@ -149,13 +154,14 @@ class ControlSidebar(QWidget):
         btn_layout.addWidget(self.quit_btn)
         grid.addLayout(btn_layout, r, 0, 1, 2); r += 1
 
-        # bottom filler
         grid.setRowStretch(r, 1)
 
     def _connect_signals(self):
         self.camera_combo.currentIndexChanged.connect(self._on_camera_changed)
-        self.model_combo.currentTextChanged.connect(
-            lambda t: self.model_changed.emit(t))
+        self.perception_combo.currentTextChanged.connect(
+            lambda t: self.perception_changed.emit(t))
+        self.reasoning_combo.currentTextChanged.connect(
+            lambda t: self.reasoning_changed.emit(t))
         self.interval_edit.textChanged.connect(self._on_interval_changed)
         self.prompt_edit.textChanged.connect(
             lambda: self.prompt_changed.emit(self.prompt_edit.toPlainText()))
@@ -184,7 +190,6 @@ class ControlSidebar(QWidget):
         self.res_combo.clear()
         for f in formats:
             self.res_combo.addItem(f)
-        # Select highest resolution (last item = highest WxH)
         if self.res_combo.count() > 0:
             self.res_combo.setCurrentIndex(self.res_combo.count() - 1)
         self.res_combo.blockSignals(False)
@@ -204,10 +209,7 @@ class ControlSidebar(QWidget):
 
     def set_streaming_state(self, streaming):
         self._streaming = streaming
-        if streaming:
-            self.start_btn.setText("STOP")
-        else:
-            self.start_btn.setText("START")
+        self.start_btn.setText("STOP" if streaming else "START")
         self.camera_combo.setEnabled(not streaming)
         self.res_combo.setEnabled(not streaming)
 
@@ -236,17 +238,35 @@ class ControlSidebar(QWidget):
     # ----- public helpers -----
 
     def set_models(self, models):
-        current = self.model_combo.currentText()
-        self.model_combo.blockSignals(True)
-        self.model_combo.clear()
-        self.model_combo.addItem("disable")
-        for model_id, _ in models:
-            self.model_combo.addItem(model_id)
-        if current and current != "disable":
-            idx = self.model_combo.findText(current)
+        """Split model list into perception (yolo) and reasoning (others)."""
+        perception = [(m_id, owner) for m_id, owner in models if m_id == "yolo"]
+        reasoning = [(m_id, owner) for m_id, owner in models if m_id != "yolo"]
+
+        # Perception
+        current_p = self.perception_combo.currentText()
+        self.perception_combo.blockSignals(True)
+        self.perception_combo.clear()
+        self.perception_combo.addItem("disable")
+        for m_id, _ in perception:
+            self.perception_combo.addItem(m_id)
+        if current_p and current_p != "disable":
+            idx = self.perception_combo.findText(current_p)
             if idx >= 0:
-                self.model_combo.setCurrentIndex(idx)
-        self.model_combo.blockSignals(False)
+                self.perception_combo.setCurrentIndex(idx)
+        self.perception_combo.blockSignals(False)
+
+        # Reasoning
+        current_r = self.reasoning_combo.currentText()
+        self.reasoning_combo.blockSignals(True)
+        self.reasoning_combo.clear()
+        self.reasoning_combo.addItem("disable")
+        for m_id, _ in reasoning:
+            self.reasoning_combo.addItem(m_id)
+        if current_r and current_r != "disable":
+            idx = self.reasoning_combo.findText(current_r)
+            if idx >= 0:
+                self.reasoning_combo.setCurrentIndex(idx)
+        self.reasoning_combo.blockSignals(False)
 
     def get_params(self):
         try:
@@ -258,7 +278,8 @@ class ControlSidebar(QWidget):
         except ValueError:
             max_tokens = 512
         return {
-            "model": self.model_combo.currentText(),
+            "perception_model": self.perception_combo.currentText(),
+            "reasoning_model": self.reasoning_combo.currentText(),
             "interval": max(1, interval),
             "prompt": self.prompt_edit.toPlainText().strip() or "Describe this image in one sentence.",
             "max_tokens": max(1, min(max_tokens, 2048)),

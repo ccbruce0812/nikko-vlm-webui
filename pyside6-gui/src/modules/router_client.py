@@ -65,7 +65,7 @@ class RouterClient(QThread):
             pass  # event loop stopped during shutdown
 
     async def _worker(self):
-        connector = aiohttp.TCPConnector(limit=2)
+        connector = aiohttp.TCPConnector(limit=4)
         async with aiohttp.ClientSession(connector=connector) as session:
             while not self.isInterruptionRequested():
                 if not self._pending:
@@ -75,9 +75,9 @@ class RouterClient(QThread):
                 model, payload = self._pending.pop(0)
 
                 if model == "__models__":
-                    await self._do_fetch_models(session)
+                    asyncio.ensure_future(self._do_fetch_models(session))
                 else:
-                    await self._do_inference(session, model, payload)
+                    asyncio.ensure_future(self._do_inference(session, model, payload))
 
     async def _do_fetch_models(self, session):
         try:

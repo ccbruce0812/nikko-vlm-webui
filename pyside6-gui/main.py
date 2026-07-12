@@ -81,8 +81,10 @@ def _parse_args():
                    help=f"Camera device ID (default: {DEFAULTS['camera_id']})")
     p.add_argument("--resolution", default=DEFAULTS["resolution"],
                    help="Resolution WxH[@FPS], e.g. 3280x2464@21 (default: auto-highest)")
-    p.add_argument("--model", default=DEFAULTS["model"],
-                   help=f"Model: reason2, moondream2, yolo, or disable (default: {DEFAULTS['model']})")
+    p.add_argument("--perception-model", default=DEFAULTS["perception_model"],
+                   help=f"Perception model: yolo or disable (default: {DEFAULTS['perception_model']})")
+    p.add_argument("--reasoning-model", default=DEFAULTS["reasoning_model"],
+                   help=f"Reasoning model: reason2, moondream2, or disable (default: {DEFAULTS['reasoning_model']})")
     p.add_argument("--interval", type=int, default=DEFAULTS["interval"],
                    help=f"Inference interval in ms (default: {DEFAULTS['interval']})")
     p.add_argument("--prompt", default=DEFAULTS["prompt"],
@@ -138,11 +140,12 @@ def main():
     # Apply CLI args to sidebar (always), auto-start if --play
     _play_args_clamped(args)
     w, h, fps = VideoSource.parse_resolution(args.resolution)
-    logger.info("CLI args: %dx%d@%d model=%s interval=%d play=%s",
-                 w, h, fps, args.model, args.interval, args.play)
+    logger.info("CLI args: %dx%d@%d perception=%s reasoning=%s interval=%d play=%s",
+                 w, h, fps, args.perception_model, args.reasoning_model, args.interval, args.play)
     QTimer.singleShot(2000, lambda: window.apply_cli_args(
         args.camera_id, w, h, fps,
-        args.model, args.interval, args.prompt, args.max_tokens,
+        args.perception_model, args.reasoning_model,
+        args.interval, args.prompt, args.max_tokens,
         args.router_url, args.ram_threshold,
         auto_start=args.play,
     ))
