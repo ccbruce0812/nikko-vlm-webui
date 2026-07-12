@@ -259,8 +259,8 @@ The main program dispatches via dict without model-specific branching.
 | Model | Visual Overlay | Caption Bar |
 |-------|---------------|-------------|
 | **YOLO** | Colored bounding boxes with class label and confidence (e.g., `person 0.87`). Boxes persist across frames for tracking effect. Bbox coordinates are scaled from inference resolution (≤1280px) back to display resolution. | No caption (response is JSON, not human-readable text) |
-| **moondream2** | Response text drawn as semi-transparent black bar at image bottom | Yes |
-| **reason2** | Response text drawn as semi-transparent black bar at image bottom | Yes |
+| **moondream2** | — | Caption bar with "Elapsed: xxxms" header |
+| **reason2** | — | Caption bar with "Elapsed: xxxms" header |
 
 YOLO bounding boxes are drawn on **every frame** (not just on inference result), using the last
 successful detection JSON. This provides a tracking-like effect — boxes stay visible until the
@@ -330,8 +330,8 @@ Content-Type: application/json
   "messages": [{
     "role": "user",
     "content": [
-      {"type": "text", "text": "Describe this image in one sentence."},
-      {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,/9j/4AAQ..."}}
+      {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,/9j/4AAQ..."}},
+      {"type": "text", "text": "Describe this image in one sentence."}
     ]
   }],
   "max_tokens": 512
@@ -496,7 +496,7 @@ bash scripts/06-start-models.sh
 
 - YOLO response is not valid JSON → check router logs: `sudo docker logs router`
 - Timeout → model container may be OOM: `sudo docker logs reason2`
-- Ensure only one model container is running at a time (Orin Nano has limited CMA memory)
+- Models share the same `llama-cpp` image — multiple containers can run concurrently, but monitor RAM via the built-in RAM monitor
 
 ### 7. PySide6 crashes on startup: "Could not load Qt platform plugin"
 
