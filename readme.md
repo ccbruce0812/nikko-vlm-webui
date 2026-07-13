@@ -250,12 +250,15 @@ Queries Router for available models, then runs batch inferences across all runni
 
 ## Performance Data
 
-| Metric | Reason2 IQ4_XS | moondream2 q4_k | YOLO |
+Measured at 1920×1080@30 on Jetson Orin Nano, 30-image batch test:
+
+| Metric | reason2 IQ4_XS | moondream2 q4_k | YOLO |
 |--------|----------------|-----------------|------|
 | Model size | LLM 970MB + mmproj 782MB | LLM 877MB + mmproj 868MB | 6.5MB |
-| Prompt speed | 72.9 tok/s | ~170 tok/s | — |
-| Generation speed | 19.5 tok/s | ~25 tok/s | — |
-| Chat Template | qwen3vl (native) | Question/Answer Jinja | — |
+| Inference time | ~9.6s (9126–10564ms) | ~5.9s (5524–6324ms) | ~135ms (87–331ms) |
+| Token speed | prompt 135 tok/s, gen 10.6 tok/s | prompt 178 tok/s, gen 17.2 tok/s | — |
+| Payload size | — | — | ~205–327 KB JPEG |
+| Chat Template | qwen3vl (native) | `{{ message['content'] }}` Jinja | — |
 | Purpose | VLM description | VLM description | Object detection |
 
 ## Memory Usage
