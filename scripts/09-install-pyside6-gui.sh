@@ -22,6 +22,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 VENV_DIR="${PROJECT_DIR}/pyside6-gui-venv"
 
+# ---- DeepStream env vars → ~/.bashrc (from memo.txt) ----
+if ! grep -q "DEEPSTREAM_DIR" ~/.bashrc 2>/dev/null; then
+    cat >> ~/.bashrc << 'EOS'
+# DeepStream 7.1
+export DEEPSTREAM_DIR=/opt/nvidia/deepstream/deepstream-7.1
+export PATH=$DEEPSTREAM_DIR/bin:$PATH
+export LD_LIBRARY_PATH=$DEEPSTREAM_DIR/lib:$LD_LIBRARY_PATH
+EOS
+fi
+export DEEPSTREAM_DIR=/opt/nvidia/deepstream/deepstream-7.1
+export PATH="$DEEPSTREAM_DIR/bin:$PATH"
+export LD_LIBRARY_PATH="$DEEPSTREAM_DIR/lib:$LD_LIBRARY_PATH"
+
 echo "=== Create Python venv (--system-site-packages) ==="
 rm -rf "${VENV_DIR}"
 python3 -m venv --system-site-packages "${VENV_DIR}"
