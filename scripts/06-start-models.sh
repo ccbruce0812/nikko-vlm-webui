@@ -23,7 +23,8 @@ MD_MODEL="moondream2-q4_k.gguf"
 MD_MMPROJ="moondream2-mmproj-f16.gguf"
 MD_GPU_LAYERS=15; MD_THREADS=4; MD_BATCH=64; MD_UBATCH=32; MD_CTX=2048
 MD_FLASH="on"; MD_PARALLEL=1
-MD_CHAT_TEMPLATE='{% for message in messages %}{% if message['\''role'\''] == '\''user'\'' %}<image>\n\nQuestion: {% for part in message['\''content'\''] %}{% if part['\''type'\''] == '\''text'\'' %}{{ part['\''text'\''] }}{% endif %}{% endfor %}\n\nAnswer: {% else %}{{ message['\''content'\''] }}{% endif %}{% endfor %}'
+MD_CHAT_TEMPLATE='{% for message in messages %}{% if message['\''role'\''] == '\''user'\'' %}<image>\n\n{{ message['\''content'\''] }}\n\n{% else %}{{ message['\''content'\''] }}{% endif %}{% endfor %}'
+
 MD_URL="http://moondream2:8001"
 MD_CACHE_K="q4_0"; MD_CACHE_V="q4_0"; MD_NO_CACHE_IDLE="on"
 
@@ -192,7 +193,6 @@ if $START_REASON2; then
     echo "=== Starting reason2  ==="
     sudo docker run -d --name reason2 --runtime nvidia --network vlm-net -p 127.0.0.1:"${R2_URL##*:}":"${R2_URL##*:}" \
         -v "${PROJECT_DIR}/models/reason2:/model:ro" \
-        -e LLAMA_KV_KEEP_ONLY_ACTIVE=1 \
         llama-cpp \
         llama-server \
             -m "/model/${R2_MODEL}" \
@@ -215,7 +215,6 @@ if $START_MOONDREAM2; then
     echo "=== Starting moondream2  ==="
     sudo docker run -d --name moondream2 --runtime nvidia --network vlm-net \
         -v "${PROJECT_DIR}/models/moondream2:/model:ro" \
-        -e LLAMA_KV_KEEP_ONLY_ACTIVE=1 \
         llama-cpp \
         llama-server \
             -m "/model/${MD_MODEL}" \
