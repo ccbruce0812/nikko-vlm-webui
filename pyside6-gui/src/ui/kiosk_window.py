@@ -183,7 +183,7 @@ class KioskWindow(QMainWindow):
         fn = PREPARE[p_model]
         payload = fn(qimage, self._params.get("prompt", ""),
                      self._params.get("max_tokens", 512))
-        logger.info("POST → %s (%.0f KB, %.0fms prep)", p_model, len(payload) / 1024, (time.time() - self._percept_start) * 1000)
+        logger.info("POST → %s (%.0f KB)", p_model, len(payload) / 1024)
         self._router.send_raw_payload(payload)
 
     # ----- reasoning interval tick -----
@@ -200,7 +200,7 @@ class KioskWindow(QMainWindow):
         fn = PREPARE[r_model]
         payload = fn(self._latest_frame, self._params.get("prompt", ""),
                      self._params.get("max_tokens", 512))
-        logger.info("POST → %s (%.0f KB, %.0fms prep)", r_model, len(payload) / 1024, (time.time() - self._infer_start) * 1000)
+        logger.info("POST → %s (%.0f KB)", r_model, len(payload) / 1024)
         self._infer_start = time.time()
         self._pending_inference = True
         self._router.send_raw_payload(payload)
