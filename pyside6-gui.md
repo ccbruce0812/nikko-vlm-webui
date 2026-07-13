@@ -17,7 +17,7 @@ All AI inference is delegated to Docker containers via the Router API.
 flowchart TB
     subgraph Jetson["Jetson Orin Nano (Host)"]
         CSI["CSI Camera<br/>(IMX219, CAM0)"]
-        GST["GStreamer Pipeline<br/>nvarguscamerasrc → NVMM → appsink"]
+        GST["GStreamer Pipeline<br/>nvarguscamerasrc | nvdsosd | nveglglessink"]
         GUI["pyside6-gui<br/>(Kiosk Window)"]
         JTOP["/proc + /sys<br/>(system monitor)"]
     end
@@ -49,7 +49,7 @@ flowchart TB
 
     subgraph Modules["Modules"]
         DF["defaults.py<br/>(shared config)"]
-        VS["video_source.py<br/>(GStreamer pipeline)"]
+        VS["video_source.py<br/>(nvdsosd pipeline)"]
         RC["router_client.py<br/>(QThread HTTP)"]
         SM["system_monitor.py<br/>(/proc + /sys)"]
     end
@@ -69,35 +69,36 @@ flowchart TB
     Main -- "per-frame" --> YO
     Main -- "interval" --> R2O
     Main -- "interval" --> MD2O
-    VS -- "frame_ready (RGBA)" --> Main
+    VS -- "frame_for_infer (JPEG)" --> Main
     RC -- "result_ready / error" --> Main
     SM -- "read_stats()" --> Main
 ```
 
-**Frame flow:**
+**Frame flow (nvdsosd dual pipeline):**
 
 ```mermaid
 flowchart LR
-    CSI["CSI Camera"] --> GST["GStreamer<br/>nvarguscamerasrc<br/>NVMM zero-copy"]
-    GST -->|"RGBA buffer"| App["appsink"]
+    CSI["CSI Camera"] --> GST["GStreamer<br/>nvarguscamerasrc"]
+    GST --> Tee["tee"]
 
-    App -->|"QImage wrap<br/>(zero-copy)"| Display["Video Display<br/>(QPainter)"]
+    Tee -->|"Display"| Mux["nvstreammux<br/>(batch=1)"]
+    Mux --> OSD["nvdsosd<br/>(GPU probe)"]
+    OSD --> EGL["nveglglessink<br/>(Qt embedded)"]
 
-    App -->|"per-frame"| YOLO["Perception<br/>(YOLO, fire-and-forget)"]
-    YOLO -->|"bboxes"| YDraw["QPainter overlay<br/>(persistent tracking)"]
-
-    App -->|"interval"| VLM["Reasoning<br/>(reason2/moondream2)"]
-    VLM -->|"Elapsed: xxxms<br/>+ caption"| CDraw["QPainter overlay<br/>(text bar)"]
+    Tee -->|"Infer 10fps"| Rate["videorate"]
+    Rate --> JPEG["nvjpegenc"]
+    JPEG --> App["appsink"]
+    App -->|"JPEG bytes"| AI["Perception<br/>(YOLO, per-frame)<br/>Reasoning<br/>(VLM, interval)"]
 ```
 
 ### 2. Function Blocks
 
 | Aspect | pyside6-gui |
 |--------|-------------|
-| **Video capture** | GStreamer `appsink` → RGBA buffer → `QImage` (zero-copy, no cv2) |
+| **Video capture** | GStreamer `nvdsosd` → `nveglglessink` (GPU render, no QImage) |
 | **AI inference** | Router API (docker containers), async HTTP |
 | **UI layout** | Single kiosk window, left sidebar + right video |
-| **Overlay drawing** | QPainter on QWidget (no cv2) |
+| **Overlay drawing** | nvdsosd GPU probe (no QPainter) |
 | **System monitor** | /proc + /sys (GPU/CPU/RAM/VRAM) top-right OSD |
 | **Camera source** | CSI only: `nvarguscamerasrc` with NVMM zero-copy |
 
@@ -202,47 +203,44 @@ All controls support standard Qt keyboard navigation:
 
 ### 1. Video Rendering Strategy
 
-The GStreamer pipeline outputs RGBA (not BGR):
+The GStreamer pipeline uses a dual-branch tee:
 
 ```
-nvarguscamerasrc ! video/x-raw(memory:NVMM),format=NV12 !
-  nvvidconv ! video/x-raw,format=RGBA !
-  appsink
+nvarguscamerasrc ! NV12 (NVMM) ! tee t
+
+  [Display] t. ! nvstreammux (batch=1) ! nvdsosd (GPU probe) !
+               nvegltransform ! nveglglessink (sync=false)
+
+  [Infer]   t. ! nvvidconv ! I420 ! videorate (10fps) ! nvjpegenc !
+               appsink (JPEG bytes)
 ```
 
-This is intentional: the RGBA buffer maps directly to `QImage::Format_RGBA8888` with **zero pixel conversion** — `QImage` wraps the raw GStreamer buffer bytes via `QImage(uchar_ptr, w, h, Format_RGBA8888)` without copying or swizzling.
+**Display branch:** `nveglglessink` renders directly to a Qt `QLabel` widget via
+`prepare-window-handle` sync bus handler. Zero CPU overhead — all rendering is GPU.
 
-| Approach | Cost per 1080p frame | Why not used |
-|----------|---------------------|--------------|
-| **RGBA → QImage (chosen)** | ~0.3ms wrap | — |
-| BGR → RGB → QImage (cv2-style) | ~3ms conversion | unnecessary extra pass |
-| QOpenGLWidget + texture | ~0.2ms upload | GL context management overhead; marginal gain |
-| nvoverlaysink (HW overlay) | 0ms | cannot draw QPainter UI elements on top |
+**Infer branch:** Scaled to ≤1280px, rate-limited to 10fps, hardware JPEG encoded.
+JPEG bytes are emitted via `frame_for_infer` signal to the main thread for AI requests.
 
-QPainter overlays (bounding boxes, caption bar, monitor text) add ~1–2ms per frame. Total rendering pipeline stays under 5ms at 1920×1080 — well within a 33ms budget at 30fps.
+**OSD / overlay:** All text and bounding boxes are drawn by `nvdsosd` GPU probe
+(`pyds` metadata injection) — top-right FPS/GPU/CPU/RAM OSD, YOLO bboxes with labels,
+and reasoning caption bar at the bottom. No QPainter or CPU drawing.
 
-**Resolution / Framerate Headroom:**
+| Approach | CPU cost | GPU cost |
+|----------|----------|----------|
+| **nvdsosd + nveglglessink (chosen)** | ~0ms | GPU render |
+| QPainter overlay (old) | ~1-5ms per frame | negligible |
+| nvoverlaysink (HW) | 0ms | cannot embed in Qt |
 
-Measured on Jetson Orin Nano with IMX219 (DISPLAY=:0 required for full speed):
+**Resolution/Framerate:**
 
-| Resolution | Target FPS | Measured FPS | Render Cost | Status |
-|-----------|-----|-------------|-------------|--------|
-| 1280×720 | 60 | ~58 (steady) | ~2ms | ✓ verified 15min stable |
-| 1920×1080 | 30 | ~29 (steady) | ~5ms | ✓ verified 15min stable |
-| 3280×2464 | 21 | ~18 (steady) | ~8ms | ✓ verified with reason2 (~5s/inf) & yolo (~150ms/inf) |
+| Resolution | Display FPS | Infer FPS |
+|-----------|-------------|-----------|
+| 1920×1080 | 30 | 10 |
+| 3280×2464 | 21 | 10 |
+| 1280×720 | 60 | 10 |
 
-**Critical:** Without `DISPLAY=:0` and a running Xorg server, Argus falls back to a slow
-capture path (~3 fps regardless of mode). The `10-start-pyside6-gui.sh` start script handles
-this automatically.
-
-**4K notes:**
-
-- The main cost jump is QPainter text rendering at higher pixel density (~3ms → ~5ms) plus the larger RGBA buffer package (~33MB).
-- QImage **must** use the Qt6 zero-copy constructor (`uchar*` + explicit cleanup null) to avoid a 33MB per-frame memcpy — a deep copy at 4K adds ~4ms and pushes total to ~14ms (58% CPU), still viable but tight.
-- IMX219 max sensor resolution is 3280×2464 (not true 3840×2160); native 4K requires a different CSI sensor. Pipeline caps are uncapped to accommodate future sensors.
-- JPEG encoding for router API uploads uses GStreamer's `jpegenc` (hardware-accelerated on Jetson) via `nvjpegenc`, not Python/PIL — avoids O(width×height) CPU-bound encode at all resolutions.
-
-**1920×1080@60 note:** IMX219 maxes at 1080p@30. Confirm sensor capability before expecting 60fps at 1080p. 720p@60 is supported by IMX219 and validated.
+**Critical:** `DISPLAY=:0` and Xorg are required for full-speed Argus capture.
+The `10-start-pyside6-gui.sh` script handles this automatically.
 
 ### 2. Overlay Behavior
 
@@ -250,23 +248,20 @@ Inference results are drawn on the video via overlay modules (`yolo_overlay.py`,
 `moondream2_overlay.py`). All three modules expose the same interface:
 
 ```python
-prepare_payload(frame: QImage, prompt: str, max_tokens: int) -> str
-draw_overlay(qimage: QImage, response_text: str) -> QImage
+prepare_payload(b64: str, prompt: str, max_tokens: int) -> str
 ```
 
-The main program dispatches via dict without model-specific branching.
+The main program dispatches via PREPARE dict without model-specific branching. Drawing is handled by nvdsosd GPU probe.
 
 | Model | Visual Overlay | Caption Bar |
 |-------|---------------|-------------|
-| **YOLO** | Colored bounding boxes with class label and confidence (e.g., `person 0.87`). Boxes persist across frames for tracking effect. Bbox coordinates are scaled from inference resolution (≤1280px) back to display resolution. | No caption (response is JSON, not human-readable text) |
-| **moondream2** | — | Caption bar with "Elapsed: xxxms" header |
-| **reason2** | — | Caption bar with "Elapsed: xxxms" header |
+| **YOLO** | Per-class colored bounding boxes with label and confidence (e.g., `person 0.87`). Bboxes persist until next inference. Coords scaled from infer→display resolution. | No caption |
+| **moondream2** | — | Caption bar: black rect background + "Elapsed: xxxms" header + response text |
+| **reason2** | — | Caption bar: black rect background + "Elapsed: xxxms" header + response text |
 
-YOLO bounding boxes are drawn on **every frame** (not just on inference result), using the last
-successful detection JSON. This provides a tracking-like effect — boxes stay visible until the
-next inference updates them. Switching away from YOLO clears persisted boxes.
-
-YOLO handles "No objects detected." responses gracefully (no overlay drawn, no warning logged).
+YOLO bounding boxes are drawn on **every frame** by the nvdsosd probe using the last
+successful detection JSON. Boxes persist until the next inference updates them.
+Switching to disable clears persisted boxes.
 
 ### 3. System Monitor OSD & Console Log
 
@@ -274,11 +269,12 @@ The GUI outputs performance stats every 5 seconds both as OSD overlay and consol
 
 ```
 17:58:17 [gui] Streaming 1920x1080@30 perception=yolo reasoning=reason2 interval=1000ms
-17:58:19 [gui] POST → reason2 (554 KB)
-17:58:27 [gui] ← reason2 OK (7624ms)
+17:58:19 [gui] POST -> reason2 (554 KB)
+17:58:27 [gui] <- reason2 OK (7624ms)
+17:58:27 [gui]   A blue bus parked on a city street...
 17:58:27 [gui] FPS:16.3 | GPU:0% CPU:71% RAM:4.2G
 17:58:32 [gui] FPS:17.7 | GPU:1% CPU:52% RAM:4.3G
-^C
+ Ctrl+C
 17:58:40 [gui] Shutting down.
 ```
 
@@ -291,8 +287,7 @@ The GUI outputs performance stats every 5 seconds both as OSD overlay and consol
 
 No jetson-stats dependency — pure `/proc` + `/sys` only.
 
-Inference result text is **not** printed to the console/log (only the stats line). POST/response
-events are logged separately.
+Reasoning result text is printed to console. YOLO result text is logged only as timing (`<- yolo OK (135ms)`).
 
 All counters reset to zero on each **Start** to provide clean per-session values.
 
@@ -342,9 +337,9 @@ Content-Type: application/json
 
 | Model | Response Content | Overlay Action |
 |-------|-----------------|----------------|
-| `reason2` | `{"choices":[{"message":{"content":"A blue bus parked on a city street."}}]}` | Draw caption bar |
-| `moondream2` | `{"choices":[{"message":{"content":"A blue bus parked on a city street."}}]}` | Draw caption bar |
-| `yolo` | `{"choices":[{"message":{"content":"[{\"class\":2,\"name\":\"car\",\"confidence\":0.87,\"bbox\":[...]}]"}}]}` | Draw colored bounding boxes |
+| `reason2` | `{"choices":[{"message":{"content":"A blue bus parked on a city street."}}]}` | nvdsosd caption bar |
+| `moondream2` | `{"choices":[{"message":{"content":"A blue bus parked on a city street."}}]}` | nvdsosd caption bar |
+| `yolo` | `{"choices":[{"message":{"content":"[{\"class\":2,\"name\":\"car\",\"confidence\":0.87,\"bbox\":[...]}]"}}]}` | nvdsosd colored bounding boxes |
 
 YOLO response is parsed as JSON; class name and confidence are drawn on each box.
 
@@ -360,14 +355,14 @@ sequenceDiagram
     participant RTR as Router :8080
     participant Backend as Model Container
 
-    GST->>UI: frame_ready (RGBA, every ~33ms)
+    GST->>UI: frame_for_infer (JPEG, every ~100ms)
     activate UI
-    UI->>UI: draw YOLO bboxes + set_frame()
+    note right of UI: nvdsosd draws per-frame (GPU)
 
     rect rgb(40, 60, 40)
         note right of UI: Perception (fire-and-forget)
         UI->>PTimer: maybe_fire(yolo)
-        PTimer->>Mod: prepare payload (JPEG + prompt)
+        PTimer->>Mod: prepare payload (b64 + prompt)
         Mod-->>PTimer: JSON payload
         PTimer->>RTR: POST /v1/chat/completions (async)
     end
@@ -378,9 +373,9 @@ sequenceDiagram
             note right of UI: Reasoning (interval)
             RTimer->>UI: tick
             activate UI
-            UI->>Mod: latest frame + prompt
+            UI->>Mod: latest JPEG (b64) + prompt
             activate Mod
-            Mod->>Mod: resize, build API payload
+            Mod->>Mod: build API payload from b64
             Mod-->>UI: JSON payload
             deactivate Mod
             UI->>RTR: POST /v1/chat/completions (async)
@@ -394,9 +389,9 @@ sequenceDiagram
         RTR-->>UI: JSON response (async callback)
         activate UI
         alt YOLO
-            UI->>Mod: draw bboxes + persist
+            UI->>UI: store bbox JSON (nvdsosd draws per-frame)
         else VLM
-            UI->>UI: caption "Elapsed: xxxms\n{text}"
+            UI->>UI: store caption text (nvdsosd draws caption bar)
         end
         deactivate UI
     end

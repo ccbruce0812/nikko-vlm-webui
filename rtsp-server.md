@@ -27,8 +27,8 @@ flowchart LR
 ### 2. Pipeline
 
 ```
-nvarguscamerasrc camera-id=0
-  ! video/x-raw(memory:NVMM),width=1280,height=720,framerate=30/1
+nvarguscamerasrc camera-id=${SENSOR_ID}
+  ! video/x-raw(memory:NVMM),width=${WIDTH},height=${HEIGHT},framerate=${FPS}/1
   ! nvvidconv
   ! video/x-raw,format=I420
   ! x264enc speed-preset=ultrafast tune=zerolatency bitrate=2000
@@ -70,7 +70,7 @@ Checks Xorg is running, restarts `nvargus-daemon`, then launches the RTSP contai
 | `--help, -h` | — | Show usage |
 
 > 📄 Start: `scripts/11-start-rtsp-server.sh`
-> 📄 Stop: `scrips/12-stop-rtsp-server.sh`
+> 📄 Stop: `scripts/12-stop-rtsp-server.sh`
 
 ### 3. Access
 
