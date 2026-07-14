@@ -22,7 +22,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 VENV_DIR="${PROJECT_DIR}/pyside6-gui-venv"
 
-# ---- DeepStream env vars → ~/.bashrc (from memo.txt) ----
+# ---- DeepStream env vars → ~/.bashrc ----
 if ! grep -q "DEEPSTREAM_DIR" ~/.bashrc 2>/dev/null; then
     cat >> ~/.bashrc << 'EOS'
 # DeepStream 7.1
