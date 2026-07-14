@@ -440,7 +440,7 @@ class KioskWindow(QMainWindow):
 
     def _start_ram_monitor(self, threshold: float):
         import subprocess
-        script = os.path.join(os.path.dirname(__file__), "..", "..",
+        script = os.path.join(os.path.dirname(__file__), "..",
                               "util", "ram_monitor.py")
         if not os.path.exists(script):
             logger.warning("RAM monitor not found: %s", script)

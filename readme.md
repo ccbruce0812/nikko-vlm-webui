@@ -392,9 +392,9 @@ sudo systemctl start nvargus-daemon
 │   ├── main.py
 │   ├── assets/
 │   │   └── style.qss
-│   ├── util/
-│   │   └── ram_monitor.py
 │   └── src/
+│       ├── util/
+│       │   └── ram_monitor.py
 │       ├── ui/
 │       │   ├── kiosk_window.py
 │       │   ├── video_display.py
