@@ -163,7 +163,7 @@ CMA compaction).
 bash scripts/03-install-deps.sh
 ```
 
-Installs: python3-venv, v4l-utils, libxcb-cursor0, python3-pip.
+Installs: python3-venv, v4l-utils, libxcb-cursor0, python3-pip, DeepStream SDK 7.1, pyds 1.2.0.
 
 > 📄 Script: `scripts/03-install-deps.sh`
 
@@ -359,7 +359,9 @@ sudo systemctl start nvargus-daemon
 ├── yolo/
 │   ├── Dockerfile
 │   ├── server.py
-│   └── make-engine.py
+│   ├── make-engine-ultralytics.py
+│   ├── make-onnx-deepstream.py
+│   └── DeepStream-Yolo/
 ├── live-vlm-webui/
 │   ├── Dockerfile
 │   └── patch_gpu_monitor.py
@@ -394,6 +396,9 @@ sudo systemctl start nvargus-daemon
 ├── pyside6-gui/
 │   ├── main.py
 │   ├── assets/
+│   │   ├── config.txt
+│   │   ├── app-config.txt
+│   │   ├── labels.txt
 │   │   └── style.qss
 │   └── src/
 │       ├── util/

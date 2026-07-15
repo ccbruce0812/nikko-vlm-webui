@@ -9,6 +9,9 @@ For the browser-based WebUI alternative, see [live-vlm-webui.md](live-vlm-webui.
 Single-window kiosk GUI for live CSI camera streaming with router-based multi-model VLM inference.
 All AI inference is delegated to Docker containers via the Router API.
 
+YOLO object detection runs directly in the GStreamer pipeline via nvinfer (no HTTP call).
+The nvinfer configuration is at `pyside6-gui/assets/config.txt` (DeepStream-Yolo CUDA parser + TensorRT engine).
+
 ### 1. Architecture
 
 **System-level:**
@@ -26,15 +29,19 @@ flowchart TB
         RTR["Router :8080"]
         MD["moondream2 :8001<br/>(llama-cpp image)"]
         R2["reason2 :8002<br/>(llama-cpp image)"]
-        YL["yolo :8003"]
+    end
+
+    subgraph DS["nvinfer Pipeline"]
+        YL["YOLO (nvinfer)<br/>GPU bbox + auto-draw"]
     end
 
     CSI --> GST --> GUI
     JTOP --> GUI
+    GST --> YL
+    YL --> GUI
     GUI -->|"POST /v1/chat/completions<br/>(base64 image + prompt)"| RTR
     RTR --> MD
     RTR --> R2
-    RTR --> YL
 ```
 
 **Module-level:**
@@ -55,10 +62,12 @@ flowchart TB
     end
 
     subgraph Overlay["Overlay Modules"]
-        YO["yolo_overlay.py<br/>(Perception)"]
+        YO["yolo_overlay.py<br/>(bbox color)"]
         R2O["reason2_overlay.py<br/>(Reasoning)"]
         MD2O["moondream2_overlay.py<br/>(Reasoning)"]
     end
+
+    OSD["nvdsosd probe<br/>(color override)"]
 
     Main --> Sidebar
     Main --> Display
@@ -66,9 +75,9 @@ flowchart TB
     Main --> VS
     Main --> RC
     Main --> SM
-    Main -- "per-frame" --> YO
     Main -- "interval" --> R2O
     Main -- "interval" --> MD2O
+    OSD --> YO
     VS -- "frame_for_infer (JPEG)" --> Main
     RC -- "result_ready / error" --> Main
     SM -- "read_stats()" --> Main
@@ -102,14 +111,74 @@ flowchart TB
 | **System monitor** | /proc + /sys (GPU/CPU/RAM/VRAM) top-right OSD |
 | **Camera source** | CSI only: `nvarguscamerasrc` with NVMM zero-copy |
 
+### 3. Design
+
+**CLI argument processing flow:**
+
+```mermaid
+flowchart TB
+    Start["10-start-pyside6-gui.sh"] --> CLICmd["python main.py --play --reasoning-model ..."]
+    CLICmd --> ArgParse["argparse: defaults from defaults.py"]
+    ArgParse --> ScanCam["Scan /dev/video* via v4l2-ctl"]
+    ScanCam --> FetchModels["GET Router /v1/models"]
+    FetchModels -->|"Router unreachable?"| Fallback["All models → disable"]
+    FetchModels --> Classify["Classify: reason2 / moondream2 → reasoning"]
+    Fallback --> Merge["CLI args > DEFAULT values"]
+    Classify --> Merge
+    Merge --> Config["config dict → KioskWindow()"]
+    Config --> Kiosk["KioskWindow.__init__()"]
+    Kiosk -->|"auto_start?"| AutoStart["_on_start(camera, width, height)"]
+    AutoStart --> Pipeline["Build GStreamer pipeline: nvinfer + nvdsosd"]
+```
+
+**Sequence diagram:**
+
+```mermaid
+sequenceDiagram
+    participant GST as GStreamer Pipeline
+    participant UI as MainWindow
+    participant SlotR as _Slot (reasoning)
+    participant Mod as Overlay Module
+    participant RTR as Router :8080
+    participant Backend as Model Container
+
+    GST->>UI: frame_for_infer (JPEG, 10fps)
+    note right of UI: YOLO via nvinfer (GPU, auto-draw)<br/>Reasoning via slot.fill(display_meta)
+
+    loop Every N ms (Interval)
+        rect rgb(60, 40, 40)
+            note right of UI: Reasoning (interval)
+            UI->>SlotR: _maybe_fire (skip if pending)
+            SlotR->>Mod: prepare_payload(b64)
+            Mod-->>SlotR: JSON payload
+            SlotR->>RTR: POST /v1/chat/completions
+            RTR->>Backend: forward
+        end
+    end
+
+    Backend-->>RTR: inference result
+    RTR-->>UI: result_ready(model, response)
+    UI->>SlotR: slot.result = {response, elapsed_ms}
+    SlotR->>SlotR: slot.pending = False
+
+    alt Model change
+        UI->>SlotR: slot.activate("reason2" / "moondream2")
+        note right of SlotR: lookup prepare + fill<br/>from overlay module
+    end
+```
+
+- YOLO runs via nvinfer in the GStreamer pipeline (no HTTP call). Bboxes auto-drawn.
+- Reasoning requests fire at intervals. Requests are skipped if a previous one is still pending.
+
+
 ## Install & Launch
 
 ### 1. Install
 
 Run the setup scripts in order (`01-disable-gui.sh` through `05-build-all.sh`) —
 this configures Xorg + openbox (enables full-speed Argus), CSI camera, MAXN power mode,
-memory tuning, downloads models, and builds all Docker images. The Python venv is
-created by `09-install-pyside6-gui.sh`.
+memory tuning, downloads models, and builds all Docker images. The Python venv and
+nvinfer pipeline (ONNX export + CUDA parser + TensorRT engine) are set up by `09-install-pyside6-gui.sh`.
 
 > 📄 Script: `scripts/09-install-pyside6-gui.sh`
 
@@ -121,7 +190,6 @@ bash scripts/10-start-pyside6-gui.sh [OPTIONS]
 
 Key CLI options:
 - `--play` — Auto-start streaming
-- `--perception-model yolo|disable` — Perception AI model
 - `--reasoning-model reason2|moondream2|disable` — Reasoning AI model
 - `--router-url URL` — Router API URL
 - `--ram-threshold GiB` — RAM threshold for container restart
@@ -145,9 +213,12 @@ Kiosk fullscreen mode with `Qt.FramelessWindowHint`.
 
 ### 2. Perception AI
 
+YOLO object detection runs directly via nvinfer in the GStreamer pipeline (no HTTP call).
+Bboxes are drawn by nvdsosd automatically; colors are overridden per class via `yolo_overlay.override_bbox_colors()`.
+
 | Control | Type | Default | Description |
 |---------|------|---------|-------------|
-| Model | QComboBox | yolo/disable | Object detection. Fire-and-forget per-frame. |
+| Model | QComboBox (disabled) | yolo (nvinfer) | Object detection handled by hardware pipeline. Not user-selectable. |
 
 ### 3. Reasoning AI
 
@@ -164,7 +235,7 @@ Kiosk fullscreen mode with `Qt.FramelessWindowHint`.
 ┌─ Left Sidebar (1/6) ────────┬─ Video Display (5/6) ────────────────────┐
 │                             │                                          │
 │  Camera                     │    ┌──────────────────────────────────┐  │
-│  Camera ID:  [0 ▼]          │    │   FPS:29.0 | GPU:45% CPU:62%     │  │
+│  Camera ID:  [0 ▼]          │    │   Sample:10.0fps | GPU:45% CPU:62%     │  │
 │  Res/FPS:    [1920x1080@30] │    │   RAM:3.8G                       │  │
 │  ─────────────────────────  │    │                                  │  │
 │  Perception AI              │    │                                  │  │
@@ -222,7 +293,7 @@ nvarguscamerasrc ! NV12 (NVMM) ! tee t
 JPEG bytes are emitted via `frame_for_infer` signal to the main thread for AI requests.
 
 **OSD / overlay:** All text and bounding boxes are drawn by `nvdsosd` GPU probe
-(`pyds` metadata injection) — top-right FPS/GPU/CPU/RAM OSD, YOLO bboxes with labels,
+(`pyds` metadata injection) — top-right Sample/GPU/CPU/RAM OSD, YOLO bboxes with labels,
 and reasoning caption bar at the bottom. No QPainter or CPU drawing.
 
 | Approach | CPU cost | GPU cost |
@@ -255,7 +326,7 @@ The main program dispatches via PREPARE dict without model-specific branching. D
 
 | Model | Visual Overlay | Caption Bar |
 |-------|---------------|-------------|
-| **YOLO** | Per-class colored bounding boxes with label and confidence (e.g., `person 0.87`). Bboxes persist until next inference. Coords scaled from infer→display resolution. | No caption |
+| **YOLO** | Per-class colored bounding boxes with label and confidence (e.g., `person 0.87`). Drawn by nvinfer → nvdsosd. Colors overridden via `yolo_overlay.override_bbox_colors()`. | No caption |
 | **moondream2** | — | Caption bar: black rect background + "Elapsed: xxxms" header + response text |
 | **reason2** | — | Caption bar: black rect background + "Elapsed: xxxms" header + response text |
 
@@ -279,10 +350,10 @@ class _Slot:
 
 **Dispatch rules:**
 
-- **Per-frame (YOLO):** `_maybe_fire(_perc, jpeg)` — skip if `pending` or model is `disable`
 - **Interval (reasoning):** `_on_interval_tick` -> `_maybe_fire(_reos, jpeg)` — same guard
 - **Result handler:** sets `slot.pending = False`, stores `{"response": text, "elapsed_ms": ms}` in `slot.result`
-- **nvdsosd probe:** `_osd_probe` calls `slot.fill(display_meta, slot.result, ...)` for each active slot — no model-specific logic in the probe itself
+- **YOLO bboxes:** drawn automatically by nvinfer → nvdsosd (color override via `yolo_overlay.override_bbox_colors`)
+- **nvdsosd probe:** `_osd_probe` writes OSD + calls `_reos.fill()` for reasoning caption — no model-specific logic
 
 **Model change:** `_on_perception_changed` / `_on_reasoning_changed` -> `slot.activate(model_name)` — looks up `prepare_payload` + `fill_display_meta` from `yolo_overlay` / `reason2_overlay` / `moondream2_overlay`.
 
@@ -304,15 +375,15 @@ The GUI outputs performance stats every 5 seconds both as OSD overlay and consol
 17:58:19 [gui] POST -> reason2 (554 KB)
 17:58:27 [gui] <- reason2 OK (7624ms)
 17:58:27 [gui]   A blue bus parked on a city street...
-17:58:27 [gui] FPS:16.3 | GPU:0% CPU:71% RAM:4.2G
-17:58:32 [gui] FPS:17.7 | GPU:1% CPU:52% RAM:4.3G
+17:58:27 [gui] Sample:9.9fps | GPU:0% CPU:71% RAM:4.2G
+17:58:32 [gui] Sample:10.0fps | GPU:1% CPU:52% RAM:4.3G
  Ctrl+C
 17:58:40 [gui] Shutting down.
 ```
 
 | Field | Source | Description |
 |---|---|---|
-| `FPS` | frame counter / elapsed | Input FPS from camera |
+| `Sample` | sample frame counter / elapsed | Inference branch FPS (max 10fps) |
 | `GPU` | `/sys/devices/platform/gpu.0/load` | GPU utilization % |
 | `CPU` | `/proc/stat` delta | CPU utilization % |
 | `RAM` | `/proc/meminfo` | System RAM used (GiB) |
@@ -373,57 +444,6 @@ Content-Type: application/json
 | `moondream2` | `{"choices":[{"message":{"content":"A blue bus parked on a city street."}}]}` | nvdsosd caption bar |
 | `yolo` | `{"choices":[{"message":{"content":"[{\"class\":2,\"name\":\"car\",\"confidence\":0.87,\"bbox\":[...]}]"}}]}` | nvdsosd colored bounding boxes |
 
-YOLO response is parsed as JSON; class name and confidence are drawn on each box.
-
-### 4. Design
-
-```mermaid
-sequenceDiagram
-    participant GST as GStreamer Pipeline
-    participant UI as MainWindow
-    participant SlotP as _Slot (perception)
-    participant SlotR as _Slot (reasoning)
-    participant Mod as Overlay Module
-    participant RTR as Router :8080
-    participant Backend as Model Container
-
-    GST->>UI: frame_for_infer (JPEG, 10fps)
-    note right of UI: nvdsosd draws per-frame (GPU)<br/>via slot.fill(display_meta)
-
-    rect rgb(40, 60, 40)
-        note right of UI: Perception (fire-and-forget)
-        UI->>SlotP: _maybe_fire (skip if pending)
-        SlotP->>Mod: prepare_payload(b64)
-        Mod-->>SlotP: JSON payload
-        SlotP->>RTR: POST /v1/chat/completions
-        RTR->>Backend: forward
-    end
-
-    loop Every N ms (Interval)
-        rect rgb(60, 40, 40)
-            note right of UI: Reasoning (interval)
-            UI->>SlotR: _maybe_fire (skip if pending)
-            SlotR->>Mod: prepare_payload(b64)
-            Mod-->>SlotR: JSON payload
-            SlotR->>RTR: POST /v1/chat/completions
-            RTR->>Backend: forward
-        end
-    end
-
-    Backend-->>RTR: inference result
-    RTR-->>UI: result_ready(model, response)
-    UI->>SlotR: slot.result = {response, elapsed_ms}
-    SlotR->>SlotR: slot.pending = False
-
-    alt Model change
-        UI->>SlotR: slot.activate("yolo" / "reason2")
-        note right of SlotR: lookup prepare + fill<br/>from overlay module
-    end
-```
-
-- YOLO requests fire per-frame (non-blocking, fire-and-forget). Bboxes update independently from reasoning.
-- Reasoning requests fire at intervals. Requests are skipped if a previous one is still pending.
-- Both pipelines share the same RouterClient with concurrent request support.
 
 ## Troubleshooting
 
@@ -513,7 +533,7 @@ bash scripts/06-start-models.sh
 
 ### 6. Inference returns error
 
-- YOLO response is not valid JSON → check router logs: `sudo docker logs router`
+- YOLO bboxes not showing → check nvinfer config at `pyside6-gui/assets/config.txt`, engine at `models/yolo/yolov8n.deepstream.engine`
 - Timeout → model container may be OOM: `sudo docker logs reason2`
 - Models share the same `llama-cpp` image — multiple containers can run concurrently, but monitor RAM via the built-in RAM monitor
 
