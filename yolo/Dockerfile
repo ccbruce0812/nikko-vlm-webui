@@ -16,5 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/*
 
 COPY server.py /app/server.py
-COPY make-engine.py /app/make-engine.py
+COPY make-engine-ultralytics.py /app/make-engine-ultralytics.py
+COPY DeepStream-Yolo/utils/export_yoloV8.py /app/DeepStream-Yolo/utils/export_yoloV8.py
+COPY make-onnx-deepstream.py /app/make-onnx-deepstream.py
 WORKDIR /app

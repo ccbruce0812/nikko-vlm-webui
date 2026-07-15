@@ -181,7 +181,10 @@ moondream2 (q4_k, \~877MB LLM + 868MB mmproj), and YOLOv8n (~6.5MB .pt).
 ```bash
 sudo docker run --rm --runtime nvidia \
     -v "$(pwd)/models/yolo:/model" \
-    yolo python3 make-engine.py
+    yolo python3 make-engine-ultralytics.py \
+    /model/yolov8n.pt \
+    --onnx /model/yolov8n-ultralytics.onnx \
+    --engine /model/yolov8n-ultralytics.engine
 ```
 
 The server auto-detects the `.engine` file and uses TensorRT for faster inference.
