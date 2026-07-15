@@ -182,7 +182,7 @@ class KioskWindow(QMainWindow):
             osd_w = int(w * 0.30)
             display_meta.num_labels = 1
             t0 = display_meta.text_params[0]; label_idx = 1
-            t0.display_text = f"FPS:{self._osd_fps:.1f} | GPU:{self._osd_gpu:.0f}% CPU:{self._osd_cpu:.0f}% RAM:{self._osd_ram:.1f}G"
+            t0.display_text = f"Sample:{self._osd_fps:.1f}fps | GPU:{self._osd_gpu:.0f}% CPU:{self._osd_cpu:.0f}% RAM:{self._osd_ram:.1f}G"
             t0.x_offset = int(w*(1-RIGHT_MARGIN)-osd_w); t0.y_offset = int(h*0.04)
             t0.font_params.font_name = "Monospace"
             t0.font_params.font_size = int(16*s)
@@ -230,7 +230,7 @@ class KioskWindow(QMainWindow):
         self._osd_fps = self._input_count / max(0.1, time.time()-self._fps_t0)
         self._osd_gpu = snap.get("gpu",0)
         self._osd_cpu = cpu_pct; self._osd_ram = snap.get("ram",0)
-        logger.info("FPS:%.1f | GPU:%.0f%% CPU:%.0f%% RAM:%.1fG",
+        logger.info("Sample:%.1ffps | GPU:%.0f%% CPU:%.0f%% RAM:%.1fG",
                      self._osd_fps, self._osd_gpu, self._osd_cpu, self._osd_ram)
 
     def _start_ram_monitor(self, threshold: float):
