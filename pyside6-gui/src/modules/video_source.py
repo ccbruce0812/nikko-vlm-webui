@@ -8,7 +8,7 @@ Pipeline (tee split):
 nveglglessink renders via prepare-window-handle (set by kiosk_window).
 nvdsosd probe is attached by kiosk_window for OSD/bbox/caption.
 """
-import re, subprocess, logging
+import re, subprocess, os, logging
 from PySide6.QtCore import QThread, Signal
 
 import gi
@@ -22,6 +22,9 @@ logger = logging.getLogger(__name__)
 
 INFER_MAX_DIM = 1280
 INFER_FPS = 10
+NVINFER_CONFIG = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+    "assets", "config.txt")
 
 
 class VideoSource(QThread):
@@ -117,6 +120,7 @@ class VideoSource(QThread):
             f"width={self.width},height={self.height} ! m.sink_0 "
             f"nvstreammux name=m batch-size=1 width={self.width} height={self.height} "
             f"live-source=1 batched-push-timeout=33333 ! "
+            f"nvinfer name=nv_infer config-file-path={NVINFER_CONFIG} unique-id=1 ! "
             f"nvdsosd name=osd process-mode=1 display-text=1 display-bbox=1 ! "
             f"nvegltransform ! "
             f"nveglglessink name=gl_sink sync=false "

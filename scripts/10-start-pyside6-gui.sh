@@ -26,7 +26,6 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     echo "  --play               Auto-start streaming (skip manual START)"
     echo "  --camera-id N        Camera device ID (default: 0)"
     echo "  --resolution WxH@FPS Resolution (default: 1920x1080)"
-    echo "  --perception-model   yolo | disable (default: yolo)"
     echo "  --reasoning-model    reason2 | moondream2 | disable (default: reason2)"
     echo "  --interval MS        Inference interval ms (default: 1000)"
     echo "  --prompt TEXT        Prompt sent to VLM"

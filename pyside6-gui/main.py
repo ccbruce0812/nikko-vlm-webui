@@ -49,7 +49,6 @@ def _parse_args():
     p.add_argument("--play", action="store_true", help="Auto-start streaming")
     p.add_argument("--camera-id", type=int, default=DEFAULTS["camera_id"])
     p.add_argument("--resolution", default=DEFAULTS["resolution"])
-    p.add_argument("--perception-model", default=DEFAULTS["perception_model"])
     p.add_argument("--reasoning-model", default=DEFAULTS["reasoning_model"])
     p.add_argument("--interval", type=int, default=DEFAULTS["interval"])
     p.add_argument("--prompt", default=DEFAULTS["prompt"])
@@ -108,20 +107,13 @@ def resolve_config(args):
         logger.warning("Router unreachable, models=disable only")
 
     # --- model classification ---
-    perception_models = [m_id for m_id, _ in models if m_id == "yolo"]
     reasoning_models = [m_id for m_id, _ in models if m_id != "yolo"]
-    config["perception_options"] = ["disable"] + perception_models
     config["reasoning_options"] = ["disable"] + reasoning_models
 
-    p_default = args.perception_model if args.perception_model is not None else config["perception_model"]
     r_default = args.reasoning_model if args.reasoning_model is not None else config["reasoning_model"]
-    if p_default not in config["perception_options"]:
-        logger.warning("Perception model '%s' not available, using disable", p_default)
-        p_default = "disable"
     if r_default not in config["reasoning_options"]:
         logger.warning("Reasoning model '%s' not available, using disable", r_default)
         r_default = "disable"
-    config["perception_default"] = p_default
     config["reasoning_default"] = r_default
 
     # --- other params (CLI > DEFAULTS) ---
@@ -160,9 +152,9 @@ def main():
     app.setFont(font)
     logger.info("Font: %dpt (DPI=%.0f, scale=%.1fx)", pts, dpi if screen else 0, config["dpi_scale"])
 
-    logger.info("Config: %dx%d@%d perception=%s reasoning=%s interval=%d play=%s",
+    logger.info("Config: %dx%d@%d reasoning=%s interval=%d play=%s (YOLO via nvinfer)",
                  config["resolution_w"], config["resolution_h"], config["resolution_fps"],
-                 config["perception_default"], config["reasoning_default"],
+                 config["reasoning_default"],
                  config["interval"], config["auto_start"])
 
     window = KioskWindow(config)

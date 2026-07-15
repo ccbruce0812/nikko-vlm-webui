@@ -106,11 +106,9 @@ class ControlSidebar(QWidget):
         self.perception_combo = QComboBox()
         self.perception_combo.setItemDelegate(_DarkComboDelegate(self.perception_combo))
         self.perception_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        for opt in cfg["perception_options"]:
+        for opt in ["yolo (nvinfer)"]:
             self.perception_combo.addItem(opt)
-        p_idx = self.perception_combo.findText(cfg["perception_default"])
-        if p_idx >= 0:
-            self.perception_combo.setCurrentIndex(p_idx)
+        self.perception_combo.setCurrentIndex(0)
         grid.addWidget(self.perception_combo, r, 1); r += 1
 
         grid.setRowMinimumHeight(r, 8); r += 1
@@ -234,7 +232,6 @@ class ControlSidebar(QWidget):
         except ValueError:
             max_tokens = 512
         return {
-            "perception_model": self.perception_combo.currentText(),
             "reasoning_model": self.reasoning_combo.currentText(),
             "interval": max(1, interval),
             "prompt": self.prompt_edit.toPlainText().strip() or "Describe this image.",
