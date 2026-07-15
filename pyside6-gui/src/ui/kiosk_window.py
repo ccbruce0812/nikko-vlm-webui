@@ -24,7 +24,7 @@ from src.ui.control_sidebar import ControlSidebar
 from src.modules.video_source import VideoSource
 from src.modules.router_client import RouterClient
 from src.modules.system_monitor import read_stats, compute_cpu_pct
-from src.modules import reason2_overlay, moondream2_overlay
+from src.modules import reason2_overlay, moondream2_overlay, yolo_overlay
 
 logger = logging.getLogger("gui")
 
@@ -192,6 +192,11 @@ class KioskWindow(QMainWindow):
                 self._osd_logged = (w,h)
                 logger.info("OSD scale: %dx%d s=%.2f font=%d/%d top_right=(%d,%d)",
                              w,h,s,int(16*s),int(16*s),int(w*(1-RIGHT_MARGIN)-osd_w),int(h*0.04))
+
+            # --- Override bbox colors per class (nvinfer → NvDsObjectMeta) ---
+            yolo_overlay.override_bbox_colors(frame_meta)
+
+            # --- Reasoning (caption) ---
             if self._reos.fill and self._reos.result:
                 label_idx = self._reos.fill(display_meta, self._reos.result, w, h, s, ds, label_idx)
             display_meta.num_labels = label_idx
