@@ -43,6 +43,42 @@ export LD_LIBRARY_PATH="$DEEPSTREAM_DIR/lib:$LD_LIBRARY_PATH"
 export DISPLAY=:0
 xset s off -dpms 2>/dev/null || true
 
+echo ""
+echo "=== A. Export DeepStream-compatible ONNX (via yolo docker) ==="
+if sudo docker image inspect yolo >/dev/null 2>&1; then
+    sudo docker run --rm --runtime nvidia \
+        -v "$(readlink -f models/yolo):/model" \
+        yolo python3 make-onnx-deepstream.py \
+        --weights /model/yolov8n.pt --dynamic \
+        --onnx /model/yolov8n.deepstream.onnx
+    echo "✓ DeepStream ONNX exported"
+else
+    echo "⚠ yolo docker image not found — skip ONNX export"
+fi
+
+echo ""
+echo "=== B. Build & install CUDA parser .so ==="
+CUDA_VER=12.6 make -C yolo/DeepStream-Yolo/nvdsinfer_custom_impl_Yolo clean
+CUDA_VER=12.6 make -C yolo/DeepStream-Yolo/nvdsinfer_custom_impl_Yolo
+cp yolo/DeepStream-Yolo/nvdsinfer_custom_impl_Yolo/libnvdsinfer_custom_impl_Yolo.so \
+   pyside6-gui/assets/
+echo "✓ CUDA parser installed"
+
+echo ""
+echo "=== C. Build TensorRT engine (via deepstream-app) ==="
+deepstream-app -c pyside6-gui/assets/app-config.txt &
+DS_PID=$!
+echo "  Waiting for engine file..."
+until [ -f model_b1_gpu0_fp16.engine ]; do sleep 1; done
+sleep 5
+kill -2 $DS_PID 2>/dev/null || true
+wait $DS_PID 2>/dev/null || true
+
+echo ""
+echo "=== D. Move engine to models/yolo/ ==="
+mv model_b1_gpu0_fp16.engine models/yolo/yolov8n.deepstream.engine
+echo "✓ Engine: models/yolo/yolov8n.deepstream.engine"
+
 echo "=== Create Python venv (--system-site-packages) ==="
 rm -rf "${VENV_DIR}"
 python3 -m venv --system-site-packages "${VENV_DIR}"
