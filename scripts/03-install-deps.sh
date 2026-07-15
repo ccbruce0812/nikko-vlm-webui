@@ -25,15 +25,7 @@ sudo ./install.sh
 sudo ldconfig
 cd -
 
-# ---------- DeepStream env vars → ~/.bashrc ----------
-if ! grep -q "DEEPSTREAM_DIR" ~/.bashrc; then
-    cat >> ~/.bashrc << 'EOS'
-# DeepStream 7.1
-export DEEPSTREAM_DIR=/opt/nvidia/deepstream/deepstream-7.1
-export PATH=$DEEPSTREAM_DIR/bin:$PATH
-export LD_LIBRARY_PATH=$DEEPSTREAM_DIR/lib:$LD_LIBRARY_PATH
-EOS
-fi
+# ---------- DeepStream env vars ----------
 export DEEPSTREAM_DIR="$DS_DIR"
 export PATH="$DEEPSTREAM_DIR/bin:$PATH"
 export LD_LIBRARY_PATH="$DEEPSTREAM_DIR/lib:$LD_LIBRARY_PATH"

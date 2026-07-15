@@ -22,18 +22,26 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 VENV_DIR="${PROJECT_DIR}/pyside6-gui-venv"
 
-# ---- DeepStream env vars → ~/.bashrc ----
+# ---- DeepStream env vars + display blanking → ~/.bashrc ----
 if ! grep -q "DEEPSTREAM_DIR" ~/.bashrc 2>/dev/null; then
     cat >> ~/.bashrc << 'EOS'
 # DeepStream 7.1
 export DEEPSTREAM_DIR=/opt/nvidia/deepstream/deepstream-7.1
 export PATH=$DEEPSTREAM_DIR/bin:$PATH
 export LD_LIBRARY_PATH=$DEEPSTREAM_DIR/lib:$LD_LIBRARY_PATH
+
+# Disable screen blanking for kiosk
+export DISPLAY=:0
+xset s off -dpms
 EOS
 fi
 export DEEPSTREAM_DIR=/opt/nvidia/deepstream/deepstream-7.1
 export PATH="$DEEPSTREAM_DIR/bin:$PATH"
 export LD_LIBRARY_PATH="$DEEPSTREAM_DIR/lib:$LD_LIBRARY_PATH"
+
+# Apply immediately (in addition to .bashrc for persistence)
+export DISPLAY=:0
+xset s off -dpms 2>/dev/null || true
 
 echo "=== Create Python venv (--system-site-packages) ==="
 rm -rf "${VENV_DIR}"
