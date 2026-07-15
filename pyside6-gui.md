@@ -77,7 +77,7 @@ flowchart TB
 **Frame flow (nvdsosd dual pipeline):**
 
 ```mermaid
-flowchart LR
+flowchart TB
     CSI["CSI Camera"] --> GST["GStreamer<br/>nvarguscamerasrc"]
     GST --> Tee["tee"]
 
@@ -263,7 +263,39 @@ YOLO bounding boxes are drawn on **every frame** by the nvdsosd probe using the 
 successful detection JSON. Boxes persist until the next inference updates them.
 Switching to disable clears persisted boxes.
 
-### 3. System Monitor OSD & Console Log
+### 3. Slot-Based Dispatch
+
+Perception and reasoning pipelines each use an independent `_Slot` state machine:
+
+```python
+class _Slot:
+    name: str           # "yolo" / "reason2" / "moondream2" / "disable"
+    prepare: callable   # prepare_payload(b64, prompt, max_tokens) -> str
+    fill: callable      # fill_display_meta(display_meta, result, w, h, s, ds, label_idx) -> int
+    pending: bool       # True = previous HTTP request still in-flight
+    result: dict        # {"response": str, "elapsed_ms": float}
+    infer_start: float  # time.time() when request was sent
+```
+
+**Dispatch rules:**
+
+- **Per-frame (YOLO):** `_maybe_fire(_perc, jpeg)` — skip if `pending` or model is `disable`
+- **Interval (reasoning):** `_on_interval_tick` -> `_maybe_fire(_reos, jpeg)` — same guard
+- **Result handler:** sets `slot.pending = False`, stores `{"response": text, "elapsed_ms": ms}` in `slot.result`
+- **nvdsosd probe:** `_osd_probe` calls `slot.fill(display_meta, slot.result, ...)` for each active slot — no model-specific logic in the probe itself
+
+**Model change:** `_on_perception_changed` / `_on_reasoning_changed` -> `slot.activate(model_name)` — looks up `prepare_payload` + `fill_display_meta` from `yolo_overlay` / `reason2_overlay` / `moondream2_overlay`.
+
+**One-at-a-time:** `slot.pending` prevents overlapping HTTP requests within the same slot. On error or timeout, `slot.pending` is cleared via `_on_router_error`. On STOP, both slots' `pending` and `result` are cleared.
+
+**Overlay modules** (`*_overlay.py`) expose two functions:
+```python
+prepare_payload(b64: str, prompt: str, max_tokens: int) -> str
+fill_display_meta(display_meta, result: dict, w, h, s, ds, label_idx) -> int
+```
+No model-specific code in `kiosk_window.py`. Adding a new model only requires a new overlay file + entry in `MODULES` dict.
+
+### 4. System Monitor OSD & Console Log
 
 The GUI outputs performance stats every 5 seconds both as OSD overlay and console log:
 
@@ -348,52 +380,44 @@ YOLO response is parsed as JSON; class name and confidence are drawn on each box
 ```mermaid
 sequenceDiagram
     participant GST as GStreamer Pipeline
-    participant UI as MainWindow (UI Thread)
-    participant PTimer as Perception<br/>(per-frame)
-    participant RTimer as Reasoning<br/>(interval)
+    participant UI as MainWindow
+    participant SlotP as _Slot (perception)
+    participant SlotR as _Slot (reasoning)
     participant Mod as Overlay Module
     participant RTR as Router :8080
     participant Backend as Model Container
 
-    GST->>UI: frame_for_infer (JPEG, every ~100ms)
-    activate UI
-    note right of UI: nvdsosd draws per-frame (GPU)
+    GST->>UI: frame_for_infer (JPEG, 10fps)
+    note right of UI: nvdsosd draws per-frame (GPU)<br/>via slot.fill(display_meta)
 
     rect rgb(40, 60, 40)
         note right of UI: Perception (fire-and-forget)
-        UI->>PTimer: maybe_fire(yolo)
-        PTimer->>Mod: prepare payload (b64 + prompt)
-        Mod-->>PTimer: JSON payload
-        PTimer->>RTR: POST /v1/chat/completions (async)
+        UI->>SlotP: _maybe_fire (skip if pending)
+        SlotP->>Mod: prepare_payload(b64)
+        Mod-->>SlotP: JSON payload
+        SlotP->>RTR: POST /v1/chat/completions
+        RTR->>Backend: forward
     end
-    deactivate UI
 
     loop Every N ms (Interval)
         rect rgb(60, 40, 40)
             note right of UI: Reasoning (interval)
-            RTimer->>UI: tick
-            activate UI
-            UI->>Mod: latest JPEG (b64) + prompt
-            activate Mod
-            Mod->>Mod: build API payload from b64
-            Mod-->>UI: JSON payload
-            deactivate Mod
-            UI->>RTR: POST /v1/chat/completions (async)
-            deactivate UI
+            UI->>SlotR: _maybe_fire (skip if pending)
+            SlotR->>Mod: prepare_payload(b64)
+            Mod-->>SlotR: JSON payload
+            SlotR->>RTR: POST /v1/chat/completions
+            RTR->>Backend: forward
         end
+    end
 
-        RTR->>Backend: forward request
-        activate Backend
-        Backend-->>RTR: inference result
-        deactivate Backend
-        RTR-->>UI: JSON response (async callback)
-        activate UI
-        alt YOLO
-            UI->>UI: store bbox JSON (nvdsosd draws per-frame)
-        else VLM
-            UI->>UI: store caption text (nvdsosd draws caption bar)
-        end
-        deactivate UI
+    Backend-->>RTR: inference result
+    RTR-->>UI: result_ready(model, response)
+    UI->>SlotR: slot.result = {response, elapsed_ms}
+    SlotR->>SlotR: slot.pending = False
+
+    alt Model change
+        UI->>SlotR: slot.activate("yolo" / "reason2")
+        note right of SlotR: lookup prepare + fill<br/>from overlay module
     end
 ```
 
