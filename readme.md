@@ -183,20 +183,7 @@ bash scripts/04-download-models.sh
 ```
 
 Downloads all models into `models/`: Reason2 (IQ4_XS, \~970MB LLM + 782MB mmproj),
-moondream2 (q4_k, \~877MB LLM + 868MB mmproj), and YOLOv8n (~6.5MB .pt).
-
-**Optional: Export YOLO to TensorRT** (after building the yolo Docker image):
-
-```bash
-sudo docker run --rm --runtime nvidia \
-    -v "$(pwd)/models/yolo:/model" \
-    yolo python3 make-engine-ultralytics.py \
-    /model/yolov8n.pt \
-    --onnx /model/yolov8n-ultralytics.onnx \
-    --engine /model/yolov8n-ultralytics.engine
-```
-
-The server auto-detects the `.engine` file and uses TensorRT for faster inference.
+moondream2 (q4_k, ~877MB LLM + 868MB mmproj), and YOLOv8n (~6.5MB .pt).
 
 > 📄 Script: `scripts/04-download-models.sh`
 

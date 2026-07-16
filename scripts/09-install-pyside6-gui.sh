@@ -79,6 +79,20 @@ echo "=== Move engine to models/yolo/ ==="
 mv model_b1_gpu0_fp16.engine models/yolo/yolov8n.deepstream.engine
 echo "✓ Engine: models/yolo/yolov8n.deepstream.engine"
 
+echo ""
+echo "=== Export YOLO to TensorRT (ultralytics engine for HTTP YOLO container) ==="
+if sudo docker image inspect yolo >/dev/null 2>&1; then
+    sudo docker run --rm --runtime nvidia \
+        -v "$(readlink -f models/yolo):/model" \
+        yolo python3 make-engine-ultralytics.py \
+        /model/yolov8n.pt \
+        --onnx /model/yolov8n-ultralytics.onnx \
+        --engine /model/yolov8n-ultralytics.engine
+    echo "✓ Ultralytics engine exported"
+else
+    echo "⚠ yolo docker image not found — skip"
+fi
+
 echo "=== Create Python venv (--system-site-packages) ==="
 rm -rf "${VENV_DIR}"
 python3 -m venv --system-site-packages "${VENV_DIR}"
