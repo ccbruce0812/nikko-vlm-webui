@@ -18,12 +18,10 @@ The nvinfer configuration is at `pyside6-gui/assets/config.txt` (DeepStream-Yolo
 
 ```mermaid
 flowchart TB
-    subgraph Jetson["Jetson Orin Nano (Host)"]
-        CSI["CSI Camera<br/>(IMX219, CAM0)"]
-        GST["GStreamer Pipeline<br/>nvarguscamerasrc | nvdsosd | nveglglessink"]
-        GUI["pyside6-gui<br/>(Kiosk Window)"]
-        JTOP["/proc + /sys<br/>(system monitor)"]
-    end
+    CSI["CSI Camera<br/>(IMX219, CAM0)"]
+    GST["GStreamer Pipeline<br/>(nvarguscamerasrc, ..., tee)"]
+    GUI["pyside6-gui<br/>(Kiosk Window)"]
+    JTOP["/proc + /sys<br/>(system monitor)"]
 
     subgraph Docker["Docker Containers"]
         RTR["Router :8080"]
@@ -31,41 +29,41 @@ flowchart TB
         R2["reason2 :8002<br/>(llama-cpp image)"]
     end
 
-    subgraph DS["nvinfer Pipeline"]
-        YL["YOLO (nvinfer)<br/>GPU bbox + auto-draw"]
-    end
+    NVJ["nvjpeg<br/>(JPEG engine)"]
+    YL["nvinfer<br/>(YOLO with TensorRT)"]
+    NDO["nvdsosd<br/>(GPU bbox + osd + caption)"]
+    NEGL["nveglglessink<br/>(EGL / GLES sink)"]
 
-    CSI --> GST --> GUI
+    CSI --> GST
+    GST --> NVJ
+    NVJ --> |"JPEG sample<br>(10 fps substream)"| GUI
     JTOP --> GUI
     GST --> YL
-    YL --> GUI
-    GUI -->|"POST /v1/chat/completions<br/>(base64 image + prompt)"| RTR
-    RTR --> MD
-    RTR --> R2
+    YL --> NDO
+    NDO --> NEGL
+    NEGL --> GUI
+    GUI --> |"meta<br/>(bbox color + osd + caption)"| NDO
+    GUI <-->|"POST /v1/chat/completions<br/>(base64 image + prompt)"| RTR
+    RTR <--> MD
+    RTR <--> R2
 ```
 
 **Module-level:**
 
 ```mermaid
 flowchart TB
-    subgraph UI["UI Layer"]
-        Main["kiosk_window.py<br/>(MainWindow)"]
-        Sidebar["control_sidebar.py<br/>(ControlSidebar)"]
-        Display["video_display.py<br/>(VideoDisplay)"]
-    end
+    Main["kiosk_window.py<br/>(MainWindow)"]
+    Sidebar["control_sidebar.py<br/>(ControlSidebar)"]
+    Display["video_display.py<br/>(VideoDisplay)"]
 
-    subgraph Modules["Modules"]
-        DF["defaults.py<br/>(shared config)"]
-        VS["video_source.py<br/>(nvdsosd pipeline)"]
-        RC["router_client.py<br/>(QThread HTTP)"]
-        SM["system_monitor.py<br/>(/proc + /sys)"]
-    end
+    DF["defaults.py<br/>(shared config)"]
+    VS["video_source.py<br/>(nvdsosd pipeline)"]
+    RC["router_client.py<br/>(QThread HTTP)"]
+    SM["system_monitor.py<br/>(/proc + /sys)"]
 
-    subgraph Overlay["Overlay Modules"]
-        YO["yolo_overlay.py<br/>(bbox color)"]
-        R2O["reason2_overlay.py<br/>(Reasoning)"]
-        MD2O["moondream2_overlay.py<br/>(Reasoning)"]
-    end
+    YO["yolo_overlay.py<br/>(bbox color)"]
+    R2O["reason2_overlay.py<br/>(Reasoning)"]
+    MD2O["moondream2_overlay.py<br/>(Reasoning)"]
 
     OSD["nvdsosd probe<br/>(color override)"]
 
@@ -83,23 +81,6 @@ flowchart TB
     SM -- "read_stats()" --> Main
 ```
 
-**Frame flow (nvdsosd dual pipeline):**
-
-```mermaid
-flowchart TB
-    CSI["CSI Camera"] --> GST["GStreamer<br/>nvarguscamerasrc"]
-    GST --> Tee["tee"]
-
-    Tee -->|"Display"| Mux["nvstreammux<br/>(batch=1)"]
-    Mux --> OSD["nvdsosd<br/>(GPU probe)"]
-    OSD --> EGL["nveglglessink<br/>(Qt embedded)"]
-
-    Tee -->|"Infer 10fps"| Rate["videorate"]
-    Rate --> JPEG["nvjpegenc"]
-    JPEG --> App["appsink"]
-    App -->|"JPEG bytes"| AI["Perception<br/>(YOLO, per-frame)<br/>Reasoning<br/>(VLM, interval)"]
-```
-
 ### 2. Function Blocks
 
 | Aspect | pyside6-gui |
@@ -113,7 +94,7 @@ flowchart TB
 
 ### 3. Design
 
-**CLI argument processing flow:**
+**CLI processing flow:**
 
 ```mermaid
 flowchart TB
@@ -129,6 +110,23 @@ flowchart TB
     Config --> Kiosk["KioskWindow.__init__()"]
     Kiosk -->|"auto_start?"| AutoStart["_on_start(camera, width, height)"]
     AutoStart --> Pipeline["Build GStreamer pipeline: nvinfer + nvdsosd"]
+```
+
+**Data flow:**
+
+```mermaid
+flowchart TB
+    CSI["CSI Camera"] --> GST["GStreamer<br/>nvarguscamerasrc"]
+    GST --> Tee["tee"]
+
+    Tee -->|"Display"| Mux["nvstreammux<br/>(batch=1)"]
+    Mux --> OSD["nvdsosd<br/>(GPU probe)"]
+    OSD --> EGL["nveglglessink<br/>(Qt embedded)"]
+
+    Tee -->|"Infer 10fps"| Rate["videorate"]
+    Rate --> JPEG["nvjpegenc"]
+    JPEG --> App["appsink"]
+    App -->|"JPEG bytes"| AI["Perception<br/>(YOLO, per-frame)<br/>Reasoning<br/>(VLM, interval)"]
 ```
 
 **Sequence diagram:**
@@ -169,7 +167,6 @@ sequenceDiagram
 
 - YOLO runs via nvinfer in the GStreamer pipeline (no HTTP call). Bboxes auto-drawn.
 - Reasoning requests fire at intervals. Requests are skipped if a previous one is still pending.
-
 
 ## Install & Launch
 
@@ -235,8 +232,8 @@ Bboxes are drawn by nvdsosd automatically; colors are overridden per class via `
 ┌─ Left Sidebar (1/6) ────────┬─ Video Display (5/6) ────────────────────┐
 │                             │                                          │
 │  Camera                     │    ┌──────────────────────────────────┐  │
-│  Camera ID:  [0 ▼]          │    │   Sample:10.0fps | GPU:45% CPU:62%     │  │
-│  Res/FPS:    [1920x1080@30] │    │   RAM:3.8G                       │  │
+│  Camera ID:  [0 ▼]          │    │ Sample:10.0fps | GPU:45% CPU:62% │  │
+│  Res/FPS:    [1920x1080@30] │    │ RAM:3.8G                         │  │
 │  ─────────────────────────  │    │                                  │  │
 │  Perception AI              │    │                                  │  │
 │  Model:      [yolo ▼]       │    │                                  │  │
