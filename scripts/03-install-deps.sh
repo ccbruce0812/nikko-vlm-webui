@@ -28,7 +28,7 @@ cd -
 # ---------- DeepStream env vars ----------
 export DEEPSTREAM_DIR="$DS_DIR"
 export PATH="$DEEPSTREAM_DIR/bin:$PATH"
-export LD_LIBRARY_PATH="$DEEPSTREAM_DIR/lib"
+export LD_LIBRARY_PATH="$DEEPSTREAM_DIR/lib:${LD_LIBRARY_PATH:-}"
 
 # ---------- pyds 1.2.0 ----------
 python3 -m pip install https://github.com/NVIDIA-AI-IOT/deepstream_python_apps/releases/download/v1.2.0/pyds-1.2.0-cp310-cp310-linux_aarch64.whl
