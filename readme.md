@@ -118,7 +118,7 @@ On the Jetson:
 # Optional: SSH back to Jetson if disconnected 
 ssh <user>@<jetson-ip>
 
-git clone git@github.com:ccbruce0812/nikko-vlm-webui.git
+git clone https://github.com/ccbruce0812/nikko-vlm-webui.git
 ```
 
 ### 4. Update Stock Packages
