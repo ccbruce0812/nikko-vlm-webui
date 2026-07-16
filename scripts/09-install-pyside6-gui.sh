@@ -37,8 +37,7 @@ EOS
 fi
 export DEEPSTREAM_DIR=/opt/nvidia/deepstream/deepstream-7.1
 export PATH="$DEEPSTREAM_DIR/bin:$PATH"
-[ "$LD_LIBRARY_PATH" == "" ] && set LD_LIBRARY_PATH=""
-export LD_LIBRARY_PATH="$DEEPSTREAM_DIR/lib:$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="$DEEPSTREAM_DIR/lib:${LD_LIBRARY_PATH:-}"
 
 # Apply immediately (in addition to .bashrc for persistence)
 export DISPLAY=:0
