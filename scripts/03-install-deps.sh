@@ -35,7 +35,8 @@ python3 -m pip install https://github.com/NVIDIA-AI-IOT/deepstream_python_apps/r
 
 echo ""
 echo "=== Verify ==="
-gst-inspect-1.0 nvdsosd 2>&1 | head -3
-python3 -c "import pyds; print('pyds', pyds.__version__)"
+echo "Run the following command to check nvdsosd and pyds:"
+echo "gst-inspect-1.0 nvdsosd 2>&1 | head -3"
+echo "python3 -c \"import pyds; print('pyds', pyds.__version__)\""
 echo ""
 echo "✓ all deps installed"

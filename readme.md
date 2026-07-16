@@ -118,7 +118,17 @@ On the Jetson:
 # Optional: SSH back to Jetson if disconnected 
 ssh <user>@<jetson-ip>
 
+# Clone from github
 git clone https://github.com/ccbruce0812/nikko-vlm-webui.git
+
+# Install git-lfs
+cd nikko-vlm-webui
+curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | sudo bash
+sudo apt-get install git-lfs
+
+# Install git-lfs hook & restore large file
+git lfs install
+git lfs pull
 ```
 
 ### 4. Update Stock Packages
