@@ -159,7 +159,11 @@ sequenceDiagram
     UI->>SlotR: slot.result = {response, elapsed_ms}
     SlotR->>SlotR: slot.pending = False
 
-    alt Model change
+    alt Perception change
+        UI->>GST: nvinfer.set_property("interval", 0|999999)
+        note right of GST: yolo=0 (every frame), disable=999999 (off)
+    end
+    alt Reasoning change
         UI->>SlotR: slot.activate("reason2" / "moondream2")
         note right of SlotR: lookup prepare + fill<br/>from overlay module
     end
@@ -187,6 +191,7 @@ bash scripts/10-start-pyside6-gui.sh [OPTIONS]
 
 Key CLI options:
 - `--play` — Auto-start streaming
+- `--perception-model yolo|disable` — Enables/disables nvinfer YOLO pipeline
 - `--reasoning-model reason2|moondream2|disable` — Reasoning AI model
 - `--router-url URL` — Router API URL
 - `--ram-threshold GiB` — RAM threshold for container restart
@@ -212,10 +217,11 @@ Kiosk fullscreen mode with `Qt.FramelessWindowHint`.
 
 YOLO object detection runs directly via nvinfer in the GStreamer pipeline (no HTTP call).
 Bboxes are drawn by nvdsosd automatically; colors are overridden per class via `yolo_overlay.override_bbox_colors()`.
+The nvinfer `interval` property is toggled dynamically — 0 when YOLO is enabled, 999999 when disabled.
 
 | Control | Type | Default | Description |
 |---------|------|---------|-------------|
-| Model | QComboBox (disabled) | yolo (nvinfer) | Object detection handled by hardware pipeline. Not user-selectable. |
+| Model | QComboBox | yolo / disable | Enables or disables nvinfer object detection. |
 
 ### 3. Reasoning AI
 
@@ -347,12 +353,13 @@ class _Slot:
 
 **Dispatch rules:**
 
-- **Interval (reasoning):** `_on_interval_tick` -> `_maybe_fire(_reos, jpeg)` — same guard
-- **Result handler:** sets `slot.pending = False`, stores `{"response": text, "elapsed_ms": ms}` in `slot.result`
-- **YOLO bboxes:** drawn automatically by nvinfer → nvdsosd (color override via `yolo_overlay.override_bbox_colors`)
-- **nvdsosd probe:** `_osd_probe` writes OSD + calls `_reos.fill()` for reasoning caption — no model-specific logic
+- **Perception (yolo/disable):** `_on_perception_changed` -> `nvinfer.set_property("interval", 0|999999)` — dynamic enable/disable without restart.
+- **Interval (reasoning):** `_on_interval_tick` -> `_maybe_fire(_reos, jpeg)` — same guard.
+- **Result handler:** sets `slot.pending = False`, stores `{"response": text, "elapsed_ms": ms}` in `slot.result`.
+- **YOLO bboxes:** drawn automatically by nvinfer → nvdsosd (color override via `yolo_overlay.override_bbox_colors`).
+- **nvdsosd probe:** `_osd_probe` writes OSD + calls `_reos.fill()` for reasoning caption — no model-specific logic.
 
-**Model change:** `_on_perception_changed` / `_on_reasoning_changed` -> `slot.activate(model_name)` — looks up `prepare_payload` + `fill_display_meta` from `yolo_overlay` / `reason2_overlay` / `moondream2_overlay`.
+**Model change:** `_on_perception_changed` -> dynamic nvinfer interval. `_on_reasoning_changed` -> `_reos.activate(model_name)` — looks up `prepare_payload` + `fill_display_meta` from `reason2_overlay` / `moondream2_overlay`.
 
 **One-at-a-time:** `slot.pending` prevents overlapping HTTP requests within the same slot. On error or timeout, `slot.pending` is cleared via `_on_router_error`. On STOP, both slots' `pending` and `result` are cleared.
 
@@ -407,7 +414,6 @@ Response:
   "data": [
     {"id": "reason2", "object": "model", "owned_by": "jetson"},
     {"id": "moondream2", "object": "model", "owned_by": "jetson"},
-    {"id": "yolo", "object": "model", "owned_by": "jetson"}
   ]
 }
 ```
