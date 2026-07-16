@@ -139,8 +139,7 @@ On the Jetson:
 # Optional: SSH back to Jetson if disconnected
 ssh <user>@<jetson-ip>
 
-sudo apt-get update
-sudo apt-get upgrade
+sudo apt-get update && sudo apt-get upgrade -y
 ```
 
 ### 5. Disable GUI
