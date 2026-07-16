@@ -160,7 +160,18 @@ class KioskWindow(QMainWindow):
         if self._latest_jpeg: self._maybe_fire(self._reos, self._latest_jpeg)
 
     @Slot(str)
-    def _on_perception_changed(self, model): pass  # nvinfer handles YOLO
+    def _on_perception_changed(self, model):
+        """Enable/disable nvinfer interval dynamically."""
+        if model == "yolo" and self._video_source and self._video_source._pipeline:
+            nv = self._video_source._pipeline.get_by_name("nv_infer")
+            if nv:
+                nv.set_property("interval", 0)
+                logger.info("nvinfer interval=0 (YOLO enabled)")
+        elif model == "disable" and self._video_source and self._video_source._pipeline:
+            nv = self._video_source._pipeline.get_by_name("nv_infer")
+            if nv:
+                nv.set_property("interval", 999999)
+                logger.info("nvinfer interval=999999 (YOLO disabled)")
 
     @Slot(str)
     def _on_reasoning_changed(self, model): self._reos.activate(model)

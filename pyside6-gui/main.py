@@ -49,6 +49,7 @@ def _parse_args():
     p.add_argument("--play", action="store_true", help="Auto-start streaming")
     p.add_argument("--camera-id", type=int, default=DEFAULTS["camera_id"])
     p.add_argument("--resolution", default=DEFAULTS["resolution"])
+    p.add_argument("--perception-model", "-pm", default=DEFAULTS["perception_model"])
     p.add_argument("--reasoning-model", default=DEFAULTS["reasoning_model"])
     p.add_argument("--interval", type=int, default=DEFAULTS["interval"])
     p.add_argument("--prompt", default=DEFAULTS["prompt"])
@@ -106,15 +107,28 @@ def resolve_config(args):
     except Exception:
         logger.warning("Router unreachable, models=disable only")
 
-    # --- model classification ---
-    reasoning_models = [m_id for m_id, _ in models if m_id != "yolo"]
-    config["reasoning_options"] = ["disable"] + reasoning_models
+    # --- model selection ---
+    # perception: hardware pipeline (nvinfer), not Router-dependent
+    perception = args.perception_model if args.perception_model else DEFAULTS["perception_model"]
+    if perception not in ("yolo", "disable"):
+        perception = DEFAULTS["perception_model"]
+        logger.warning("Invalid perception model, using '%s'", perception)
 
-    r_default = args.reasoning_model if args.reasoning_model is not None else config["reasoning_model"]
-    if r_default not in config["reasoning_options"]:
-        logger.warning("Reasoning model '%s' not available, using disable", r_default)
-        r_default = "disable"
-    config["reasoning_default"] = r_default
+    config["perception_model"] = perception
+
+    # reasoning: from Router listing (skip yolo)
+    reasoning_running = [m_id for m_id, _ in models if m_id != "yolo"]
+    config["reasoning_options"] = ["disable"] + reasoning_running
+    reasoning = args.reasoning_model if args.reasoning_model else DEFAULTS["reasoning_model"]
+    if reasoning not in config["reasoning_options"]:
+        default = DEFAULTS["reasoning_model"]
+        if default in config["reasoning_options"]:
+            reasoning = default
+        else:
+            reasoning = "disable"
+        logger.warning("Reasoning model not available, using '%s'", reasoning)
+
+    config["reasoning_default"] = reasoning
 
     # --- other params (CLI > DEFAULTS) ---
     config["interval"] = args.interval if args.interval is not None else config["interval"]
@@ -152,9 +166,9 @@ def main():
     app.setFont(font)
     logger.info("Font: %dpt (DPI=%.0f, scale=%.1fx)", pts, dpi if screen else 0, config["dpi_scale"])
 
-    logger.info("Config: %dx%d@%d reasoning=%s interval=%d play=%s (YOLO via nvinfer)",
+    logger.info("Config: %dx%d@%d perception=%s reasoning=%s interval=%d play=%s",
                  config["resolution_w"], config["resolution_h"], config["resolution_fps"],
-                 config["reasoning_default"],
+                 config["perception_model"], config["reasoning_default"],
                  config["interval"], config["auto_start"])
 
     window = KioskWindow(config)

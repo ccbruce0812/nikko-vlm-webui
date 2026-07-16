@@ -109,7 +109,14 @@ class RouterClient(QThread):
 
     def stop(self):
         self.requestInterruption()
-        if hasattr(self, '_loop'):
-            if self._loop.is_running():
-                self._loop.call_soon_threadsafe(self._loop.stop)
-            self.wait(2000)
+        if hasattr(self, '_loop') and self._loop.is_running():
+            try:
+                pending = asyncio.all_tasks(self._loop)
+                for task in pending:
+                    task.cancel()
+                self._loop.run_until_complete(
+                    asyncio.gather(*pending, return_exceptions=True))
+            except Exception:
+                pass
+            self._loop.call_soon_threadsafe(self._loop.stop)
+        self.wait(2000)
