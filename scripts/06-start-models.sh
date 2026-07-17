@@ -183,6 +183,7 @@ if $START_REASON2; then
         -v "${PROJECT_DIR}/models/reason2:/model:ro" \
         llama-cpp \
         llama-server \
+	    --cache-ram 0 --no-cache-idle-slots \
             -m "/model/${R2_MODEL}" \
             --mmproj "/model/${R2_MMPROJ}" \
             --host 0.0.0.0 --port "${R2_URL##*:}" \
@@ -205,6 +206,7 @@ if $START_MOONDREAM2; then
         -v "${PROJECT_DIR}/models/moondream2:/model:ro" \
         llama-cpp \
         llama-server \
+	    --cache-ram 0 --no-cache-idle-slots \
             -m "/model/${MD_MODEL}" \
             --mmproj "/model/${MD_MMPROJ}" \
             ${MD_CHAT_TEMPLATE:+--chat-template "${MD_CHAT_TEMPLATE}"} \

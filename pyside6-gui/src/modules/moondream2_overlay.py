@@ -14,6 +14,7 @@ def prepare_payload(b64: str, prompt: str, max_tokens: int) -> str:
             ]
         }],
         "max_tokens": min(max_tokens, 512),
+        "cache_prompt": False
     })
 
 
