@@ -9,15 +9,6 @@
 # ============================================================
 set -euo pipefail
 
-# ---- help ----
-if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-    echo "Usage: bash scripts/09-install-pyside6-gui.sh"
-    echo ""
-    echo "  Create pyside6-gui-venv with PySide6 + aiohttp."
-    echo "  For kiosk GUI and headless validation tool."
-    exit 0
-fi
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 VENV_DIR="${PROJECT_DIR}/pyside6-gui-venv"
@@ -44,6 +35,21 @@ export DISPLAY=:0
 xset s off -dpms 2>/dev/null || true
 
 echo ""
+echo "=== Remove artifacts ==="
+rm -f models/yolo/*.engine
+rm -f models/yolo/*.onnx
+rm -f pyside6-gui/assets/*.so
+echo "✓ Artifacts removed"
+
+echo ""
+echo "=== Build & install CUDA parser .so ==="
+CUDA_VER=12.6 make -C yolo/DeepStream-Yolo/nvdsinfer_custom_impl_Yolo clean
+CUDA_VER=12.6 make -C yolo/DeepStream-Yolo/nvdsinfer_custom_impl_Yolo
+cp yolo/DeepStream-Yolo/nvdsinfer_custom_impl_Yolo/libnvdsinfer_custom_impl_Yolo.so \
+   pyside6-gui/assets/
+echo "✓ CUDA parser installed"
+
+echo ""
 echo "=== Export DeepStream-compatible ONNX (via yolo docker) ==="
 if sudo docker image inspect yolo >/dev/null 2>&1; then
     sudo docker run --rm --runtime nvidia \
@@ -55,14 +61,6 @@ if sudo docker image inspect yolo >/dev/null 2>&1; then
 else
     echo "⚠ yolo docker image not found — skip ONNX export"
 fi
-
-echo ""
-echo "=== Build & install CUDA parser .so ==="
-CUDA_VER=12.6 make -C yolo/DeepStream-Yolo/nvdsinfer_custom_impl_Yolo clean
-CUDA_VER=12.6 make -C yolo/DeepStream-Yolo/nvdsinfer_custom_impl_Yolo
-cp yolo/DeepStream-Yolo/nvdsinfer_custom_impl_Yolo/libnvdsinfer_custom_impl_Yolo.so \
-   pyside6-gui/assets/
-echo "✓ CUDA parser installed"
 
 echo ""
 echo "=== Build TensorRT engine (via deepstream-app) ==="

@@ -37,18 +37,6 @@ RTR_CACHE_TTL=2
 RTR_TIMEOUT=120
 RTR_CONNECT_TIMEOUT=5
 
-usage() {
-    echo "Usage: bash scripts/06-start-models.sh"
-    echo ""
-    echo "  Interactive model launcher."
-    echo "  Always starts Router. Pick reason2, moondream2, YOLO, or a combo."
-    echo "  All VLMs use the llama-cpp image ."
-    exit 0
-}
-
-if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-    usage
-fi
 
 # ---- Power mode ----
 echo "=== Power mode ==="
@@ -191,7 +179,7 @@ echo "  ✓ router :${RTR_PORT}"
 if $START_REASON2; then
     echo ""
     echo "=== Starting reason2  ==="
-    sudo docker run -d --name reason2 --runtime nvidia --network vlm-net -p 127.0.0.1:"${R2_URL##*:}":"${R2_URL##*:}" \
+    sudo docker run -d --name reason2 --runtime nvidia --network vlm-net \
         -v "${PROJECT_DIR}/models/reason2:/model:ro" \
         llama-cpp \
         llama-server \
