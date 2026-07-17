@@ -1,10 +1,4 @@
 # RTSP server container: CSI camera (CAM0 / IMX219) via nvarguscamerasrc
-# dustynv/l4t-pytorch already has nvarguscamerasrc / nvvidconv plugins
-#
-# docker run requires:
-#   --runtime nvidia --network host
-#   --device=/dev/video0 --device=/dev/media0
-#   -v /tmp:/tmp              # nvargus-daemon socket (/tmp/argus_socket)
 FROM dustynv/l4t-pytorch:r36.4.0
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -21,9 +15,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gstreamer1.0-libav \
     && rm -rf /var/lib/apt/lists/*
 
-COPY gst_rtsp_server.py /app/gst_rtsp_server.py
+COPY rtsp-server.py /app/rtsp-server.py
 WORKDIR /app
-EXPOSE 8554
-
-# WIDTH / HEIGHT / FPS / SENSOR_ID configurable via env vars
-CMD ["python3", "gst_rtsp_server.py"]
