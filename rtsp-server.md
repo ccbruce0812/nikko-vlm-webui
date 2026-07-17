@@ -27,8 +27,8 @@ flowchart LR
 ### 2. Pipeline
 
 ```
-nvarguscamerasrc camera-id=${SENSOR_ID}
-  ! video/x-raw(memory:NVMM),width=${WIDTH},height=${HEIGHT},framerate=${FPS}/1
+nvarguscamerasrc sensor-id=X
+  ! video/x-raw(memory:NVMM),width=W,height=H,framerate=FPS/1
   ! nvvidconv
   ! video/x-raw,format=I420
   ! x264enc speed-preset=ultrafast tune=zerolatency bitrate=2000
@@ -59,7 +59,9 @@ is built as part of `05-build-all.sh`.
 bash scripts/11-start-rtsp-server.sh [OPTIONS]
 ```
 
-Checks Xorg is running, restarts `nvargus-daemon`, then launches the RTSP container.
+Interactive launcher — prompts for each parameter (press Enter for defaults).
+Checks Xorg is running, restarts `nvargus-daemon`, then launches the RTSP container
+with `-p PORT:PORT` and CLI arguments passed directly to `rtsp-server.py`.
 
 | Option | Default | Description |
 |--------|---------|-------------|

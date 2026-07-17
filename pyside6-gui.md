@@ -450,21 +450,7 @@ Content-Type: application/json
 
 ## Troubleshooting
 
-### 1. Argus FPS too low (~3 fps)
-
-Argus (nvarguscamerasrc) requires an X server for full-speed capture. Ensure Xorg is running and `DISPLAY=:0` is set. The `10-start-pyside6-gui.sh` start script handles this automatically.
-
-Use the command to verify:
-
-```bash
-gst-launch-1.0 -v \
-      nvarguscamerasrc ! \
-      'video/x-raw(memory:NVMM),width=1280,height=720,format=NV12' ! \
-      nvvidconv ! \
-      fpsdisplaysink sync=false text-overlay=false video-sink=fakesink
-```
-
-### 2. CMA / NVMM allocation failure
+### 1. CMA / NVMM allocation failure
 
 **Symptoms:** `NvMapMemAllocInternalTagged: error 12`, `Failed to create CaptureSession`,
 or camera fails to start after STOP/START cycle, especially at high resolutions.
@@ -490,60 +476,7 @@ sudo systemctl start nvargus-daemon
 # Then restart model containers and GUI
 ```
 
-### 3. No video — black screen
+### 2. `09-install-pyside6-gui.sh` reboot request
 
-```bash
-# Restart nvargus-daemon (CSI cameras only)
-sudo systemctl restart nvargus-daemon
-
-# Verify camera is detected
-ls /dev/video*
-v4l2-ctl -d /dev/video0 --list-formats-ext
-
-# Test raw GStreamer pipeline
-gst-launch-1.0 -v \
-      nvarguscamerasrc ! \
-      'video/x-raw(memory:NVMM),width=1280,height=720,format=NV12' ! \
-      nvvidconv ! \
-      fpsdisplaysink sync=false text-overlay=false video-sink=fakesink
-```
-
-### 4. Module 'gi' not found
-
-```bash
-# Ensure GObject Introspection is installed at system level
-sudo apt install -y gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0
-
-# Venv must be created with --system-site-packages
-rm -rf pyside6-gui-venv
-python3 -m venv --system-site-packages pyside6-gui-venv
-source pyside6-gui-venv/bin/activate
-pip install pyside6 aiohttp
-```
-
-### 5. Model dropdown empty
-
-```bash
-# Check router is running
-curl -s http://localhost:8080/health
-
-# Check which models are available
-curl -s http://localhost:8080/v1/models | python3 -m json.tool
-
-# Start a model container if needed
-bash scripts/06-start-models.sh
-```
-
-### 6. Inference returns error
-
-- YOLO bboxes not showing → check nvinfer config at `pyside6-gui/assets/config.txt`, engine at `models/yolo/yolov8n.deepstream.engine`
-- Timeout → model container may be OOM: `sudo docker logs reason2`
-- Models share the same `llama-cpp` image — multiple containers can run concurrently, but monitor RAM via the built-in RAM monitor
-
-### 7. PySide6 crashes on startup: "Could not load Qt platform plugin"
-
-```bash
-sudo apt install -y libxcb-cursor0
-export QT_QPA_PLATFORM=xcb
-```
+The script may ask you to restart the board. It is normal and just type YES/yes.
 

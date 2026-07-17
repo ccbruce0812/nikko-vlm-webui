@@ -73,21 +73,20 @@ is built as part of `05-build-all.sh`.
 ### 2. Launch
 
 ```bash
-bash scripts/13-start-live-vlm-webui.sh [OPTIONS]
+bash scripts/13-start-live-vlm-webui.sh
 ```
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--port N` | 8554 | WebUI listening port (default: 8090) |
-| `--help, -h` | — | Show usage |
+| Port | 8090 | WebUI listening port |
+| Model | reason2 | Default inference model (modify at startup) |
 
-The start script checks that no existing instance is running, removes any stale
-container, then launches with the specified port (default 8090).
+Interactive launcher — prompts for each parameter (press Enter for defaults).
 
-> 📄 Start: `script/13-start-live-vlm-webui.sh`
-> 📄 Stop: `scrips/14-stop-live-vlm-webui.sh`
+> 📄 Start: `scripts/13-start-live-vlm-webui.sh`
+> 📄 Stop: `scripts/14-stop-live-vlm-webui.sh`
 
-## 3. Access
+### 3. Access
 
 ```
 http://<jetson-ip>:8090

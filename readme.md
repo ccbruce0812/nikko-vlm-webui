@@ -86,7 +86,10 @@ See [Container Description](#2-container-description)
 
 ### 2. SSH + Passwordless sudo
 
+** Open a terminal window. You will work on it **
+
 Generate an SSH key on your local machine and copy it to the Jetson:
+** Optional if you want to work on the Jetson **
 
 ```bash
 # Generate key (local machine)
@@ -99,7 +102,7 @@ ssh-copy-id <user>@<jetson-ip>
 ssh <user>@<jetson-ip>
 ```
 
-On the Jetson, set up passwordless sudo so scripts don't prompt for passwords:
+On the Jetson:
 
 ```bash
 # Add a sudoer to the passwordless list
@@ -164,9 +167,13 @@ Configures CSI camera (IMX219 CAM0), enables MAXN Super Mode (25W) with
 jetson_clocks, and applies kernel memory tuning (swappiness, cache pressure,
 CMA compaction).
 
+** You need to restart the Jetson to apply the new CSI configuration **
+
 > 📄 Script: `scripts/02-system-config.sh`
 
 ### 7. Install Basic Packages
+
+** The GUI has been disabled. You can continue by login from a remote machine or work with xterm on the screen **
 
 ```bash
 bash scripts/03-install-deps.sh
@@ -215,7 +222,7 @@ All containers on `vlm-net` bridged network.  Router and RTSP server also expose
 
 ## Start Services
 
-### 1. Interactive Model Launcher (recommended)
+### 1. Interactive Model Launcher
 
 ```bash
 bash scripts/06-start-models.sh
@@ -363,7 +370,7 @@ sudo systemctl start nvargus-daemon
 │   └── patch_gpu_monitor.py
 ├── rtsp-server/
 │   ├── Dockerfile
-│   └── gst_rtsp_server.py
+│   └── rtsp-server.py
 ├── models/
 │   ├── reason2/
 │   ├── moondream2/
