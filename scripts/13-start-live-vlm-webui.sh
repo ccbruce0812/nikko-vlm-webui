@@ -1,86 +1,71 @@
 #!/usr/bin/env bash
 # ============================================================
-# Start live-vlm-webui (browser-based WebRTC frontend)
-# Requires: RTSP server running, Router running, model container running
+# 13-start-live-vlm-webui.sh
+# Interactive launcher for browser-based WebRTC frontend.
 # ============================================================
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+CONTAINER="live-vlm-webui"
+
 # ---- defaults ----
 PORT=8090
+MODEL="reason2"
 
-usage() {
-    echo "Usage: bash scripts/13-start-live-vlm-webui.sh [OPTIONS]"
-    echo ""
-    echo "  Start the browser-based VLM WebUI (WebRTC relay + Router client)."
-    echo ""
-    echo "Options:"
-    echo "  --port N             WebUI listening port (default: 8090)"
-    echo "  --help, -h           show this message"
-    echo ""
-    echo "Examples:"
-    echo "  bash scripts/13-start-live-vlm-webui.sh"
-    echo "  bash scripts/13-start-live-vlm-webui.sh --port 8091"
-    exit 0
-}
-
-# ---- parse args ----
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --help|-h) usage ;;
-        --port) PORT="$2"; shift 2 ;;
-        *) echo "Unknown option: $1"; usage ;;
-    esac
-done
-
+# ---- interactive prompts ----
 echo "============================================"
-echo " Start live-vlm-webui"
+echo " live-vlm-webui Launcher"
 echo "============================================"
-echo "  Port: ${PORT}"
-echo "  URL:  http://<jetson-ip>:${PORT}"
+echo "  Press Enter to accept defaults."
+echo ""
 
-# ---- Already running? ----
-if sudo docker ps --format '{{.Names}}' | grep -q '^live-vlm-webui$'; then
-    echo ""
-    echo "✗ live-vlm-webui is already running."
-    echo "  Stop it first: bash scripts/14-stop-live-vlm-webui.sh"
-    exit 1
-fi
+read -p "  Port         [$PORT]: " v; PORT="${v:-$PORT}"
+read -p "  Model        [$MODEL]: " v; MODEL="${v:-$MODEL}"
+
+echo ""
+echo "Starting with: port=$PORT model=$MODEL"
 
 # ---- validate port ----
 if ! [[ "$PORT" =~ ^[0-9]+$ ]] || [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
-    echo ""
     echo "✗ Invalid port: $PORT (must be 1–65535)"
     exit 1
 fi
 
-echo ""
-echo "=== Removing old container (if any) ==="
-sudo docker rm -f live-vlm-webui 2>/dev/null || echo "(no existing container)"
+# ---- already running? ----
+if sudo docker ps --format '{{.Names}}' | grep -q "^${CONTAINER}$"; then
+    echo "✗ $CONTAINER is already running. Stop it first: bash scripts/14-stop-live-vlm-webui.sh"
+    exit 1
+fi
 
+# ---- remove old ----
+echo "=== Removing old container ==="
+sudo docker rm -f "$CONTAINER" 2>/dev/null || echo "(no existing container)"
+
+# ---- launch ----
 echo ""
-echo "=== Starting live-vlm-webui ==="
+echo "=== Starting $CONTAINER ==="
 sudo docker run -d \
-    --name live-vlm-webui \
+    --name "$CONTAINER" \
     --network host \
     --runtime nvidia \
     --privileged \
     -v /sys:/sys:ro \
     -e PORT="$PORT" \
-    live-vlm-webui \
+    "$CONTAINER" \
     --host 0.0.0.0 --port "$PORT" \
     --api-base http://localhost:8080/v1 \
     --api-key "***" \
-    --model reason2
+    --model "$MODEL"
 
-echo ""
-echo "=== Waiting for startup... ==="
 sleep 3
 
-if sudo docker ps --format '{{.Names}}' | grep -q '^live-vlm-webui$'; then
-    echo "✓ live-vlm-webui started"
+if sudo docker ps --format '{{.Names}}' | grep -q "^${CONTAINER}$"; then
+    echo ""
+    echo "✓ $CONTAINER started"
     echo "  Open: http://$(hostname -I | awk '{print $1}'):${PORT}"
 else
-    echo "✗ live-vlm-webui failed to start, check logs:"
-    sudo docker logs live-vlm-webui 2>/dev/null || true
+    echo "✗ Failed to start. Logs:"
+    sudo docker logs "$CONTAINER"
     exit 1
 fi

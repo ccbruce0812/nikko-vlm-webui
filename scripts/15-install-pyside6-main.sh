@@ -9,15 +9,6 @@
 # ============================================================
 set -euo pipefail
 
-# ---- help ----
-if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-    echo "Usage: bash scripts/15-install-pyside6-main.sh"
-    echo ""
-    echo "  Create pyside6-main-venv with PySide6 + aiohttp."
-    echo "  Runs under Xorg + openbox (no graphical.target needed)."
-    exit 0
-fi
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 VENV_DIR="${PROJECT_DIR}/pyside6-main-venv"
