@@ -86,10 +86,10 @@ See [Container Description](#2-container-description)
 
 ### 2. SSH + Passwordless sudo
 
-** Open a terminal window. You will work on it **
+**Open a terminal window. You will work on it**
 
 Generate an SSH key on your local machine and copy it to the Jetson:
-** Optional if you want to work on the Jetson **
+**Optional if you want to work on the Jetson**
 
 ```bash
 # Generate key (local machine)
@@ -167,13 +167,13 @@ Configures CSI camera (IMX219 CAM0), enables MAXN Super Mode (25W) with
 jetson_clocks, and applies kernel memory tuning (swappiness, cache pressure,
 CMA compaction).
 
-** You need to restart the Jetson to apply the new CSI configuration **
+**You need to restart the Jetson to apply the new CSI configuration**
 
 > 📄 Script: `scripts/02-system-config.sh`
 
 ### 7. Install Basic Packages
 
-** The GUI has been disabled. You can continue by login from a remote machine or work with xterm on the screen **
+**The GUI has been disabled. You can continue by login from a remote machine or work with xterm on the screen**
 
 ```bash
 bash scripts/03-install-deps.sh
