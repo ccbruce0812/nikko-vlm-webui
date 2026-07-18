@@ -127,7 +127,7 @@ git clone https://github.com/ccbruce0812/nikko-vlm-webui.git
 # Install git-lfs
 cd nikko-vlm-webui
 curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | sudo bash
-sudo apt-get install git-lfs
+sudo apt-get install git-lfs -y
 
 # Install git-lfs hook & restore large file
 git lfs install
