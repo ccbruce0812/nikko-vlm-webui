@@ -88,8 +88,11 @@ See [Container Description](#2-container-description)
 
 **Open a terminal window. You will work on it**
 
+This will add trust information to the Jetson so you can login to it without a password.
+
 Generate an SSH key on your local machine and copy it to the Jetson:
-**Optional if you want to work on the Jetson**
+
+**Optional if you want to work on the Jetson deksktop or terminal**
 
 ```bash
 # Generate key (local machine)
@@ -101,6 +104,8 @@ ssh-copy-id <user>@<jetson-ip>
 # Login to verify passwordless access (now you are in remote machine)
 ssh <user>@<jetson-ip>
 ```
+
+This will disable the password verification of `sudo` command.
 
 On the Jetson:
 
