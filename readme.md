@@ -408,9 +408,7 @@ sudo systemctl start nvargus-daemon
 │   ├── 11-start-rtsp-server.sh         # start RTSP Server (CSI camera, optional)
 │   ├── 12-stop-rtsp-server.sh          # stop RTSP Server
 │   ├── 13-start-live-vlm-webui.sh      # start browser WebUI
-│   ├── 14-stop-live-vlm-webui.sh       # stop browser WebUI
-│   ├── 15-install-pyside6-main.sh      # pyside6-main venv + packages
-│   └── 16-start-pyside6-main.sh        # launch pyside6-main GUI
+│   └── 14-stop-live-vlm-webui.sh       # stop browser WebUI
 ├── pyside6-gui/
 │   ├── main.py
 │   ├── assets/
