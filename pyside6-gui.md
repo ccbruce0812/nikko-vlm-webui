@@ -1,4 +1,4 @@
-# Kiosk VLM GUI
+# PySide6 Kiosk GUI
 
 A PySide6 kiosk GUI.
 For Docker backend, model setup, and system configuration see [readme.md](readme.md).
@@ -6,11 +6,10 @@ For the browser-based WebUI alternative, see [live-vlm-webui.md](live-vlm-webui.
 
 ## Overview
 
-Single-window kiosk GUI for live CSI camera streaming with router-based multi-model VLM inference.
-All AI inference is delegated to Docker containers via the Router API.
+Full-window kiosk GUI for live streaming with multi-model VLM inference.
+All AI reasoning is delegated to Docker containers via the Router API.
 
-YOLO object detection runs directly in the GStreamer pipeline via nvinfer (no HTTP call).
-The nvinfer configuration is at `pyside6-gui/assets/config.txt` (DeepStream-Yolo CUDA parser + TensorRT engine).
+YOLO object detection runs directly in the GStreamer pipeline via nvinfer.
 
 ### 1. Architecture
 
@@ -18,32 +17,41 @@ The nvinfer configuration is at `pyside6-gui/assets/config.txt` (DeepStream-Yolo
 
 ```mermaid
 flowchart TB
-    CSI["CSI Camera<br/>(IMX219, CAM0)"]
-    GST["GStreamer Pipeline<br/>(nvarguscamerasrc, ..., tee)"]
-    GUI["pyside6-gui<br/>(Kiosk Window)"]
-    JTOP["/proc + /sys<br/>(system monitor)"]
-
-    subgraph Docker["Docker Containers"]
-        RTR["Router :8080"]
-        MD["moondream2 :8001<br/>(llama-cpp image)"]
-        R2["reason2 :8002<br/>(llama-cpp image)"]
+    subgraph Hardware
+        CSI["IMX219"]
+        DP["Display Port"]
+        KB["Keyboard<br/>Mouse"]
     end
 
-    NVJ["nvjpeg<br/>(JPEG engine)"]
-    YL["nvinfer<br/>(YOLO with TensorRT)"]
-    NDO["nvdsosd<br/>(GPU bbox + osd + caption)"]
-    NEGL["nveglglessink<br/>(EGL / GLES sink)"]
+    subgraph Middleware
+        GST["GStreamer<br/>Pipeline"]
+        NVJ["nvjpeg<br/>(JPEG Codec)"]
+        NVI["nvinfer<br/>(Inference Engine)"]
+        NVO["nvdsosd<br/>(Bbox + OSD + Caption)"]
+        NVEGL["nveglglessink<br/>(EGL / GLES)"]
+        MON["System Monitor<br/>(/proc + /sys)"]
+        QT["Qt"]
+    end
+
+    GUI["pyside6-gui"]
+
+    subgraph Docker["Container"]
+        RTR["Router"]
+        MD["MoonDream2"]
+        R2["Reason2"]
+        YOLO["YOLO"]
+        style YOLO stroke-dasharray: 5, 5
+    end
 
     CSI --> GST
-    GST --> NVJ
-    NVJ --> |"JPEG sample<br>(10 fps substream)"| GUI
-    JTOP --> GUI
-    GST --> YL
-    YL --> NDO
-    NDO --> NEGL
-    NEGL --> GUI
-    GUI --> |"meta<br/>(bbox color + osd + caption)"| NDO
-    GUI <-->|"POST /v1/chat/completions<br/>(base64 image + prompt)"| RTR
+    GST --> NVI --> NVO --> NVEGL --> DP
+    GST --> NVJ --> GUI
+    MON --> GUI
+    GUI <--> |"probe"| NVO
+    GUI <-->|"POST /v1/chat/completions"| RTR
+    GUI <--> QT
+    QT --> DP
+    KB --> QT
     RTR <--> MD
     RTR <--> R2
 ```
