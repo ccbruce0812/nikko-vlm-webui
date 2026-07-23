@@ -1,49 +1,70 @@
-# Reason2 + moondream2 + YOLO GGUF Container Inference Platform
+# Reason2 + MoonDream2 + YOLO Inference Platform
 
 ## Overview
 
-Multi-model VLM inference on NVIDIA Jetson Orin Nano via Docker containers, using the jetson-containers ecosystem for CUDA management.
+Multi-model VLM inference on NVIDIA Jetson Orin Nano.
 
 ### 1. Hardware Requirements
 
-- **NVIDIA Jetson Orin Nano** (JetPack 6.2.1 / L4T R36.4.7)
+- NVIDIA Jetson Orin Nano (JetPack 6.2.1 / L4T R36.4.7)
 - CUDA 12.6 (GPU Driver 540.4.0)
-- RAM: 7.4GB
-- Storage: 30GB+ free (Docker images ~20GB + models ~3.5GB)
+- RAM: 8GB
+- Storage: 64GB
 
 ### 2. Architecture
 
 ```mermaid
-flowchart LR
-    subgraph Clients["Clients"]
-        Browser["Browser"]
-        Kiosk["pyside6-gui<br/>(Kiosk GUI)"]
-        Desktop["pyside6-main<br/>(Desktop GUI)"]
+flowchart TB
+    subgraph client [Client]
+        browser[Browser]
+        cam[Camera]
     end
 
-    subgraph Infra["Infrastructure"]
-        WebUI["live-vlm-webui<br/>:8090"]
-        RTSP["rtsp-server<br/>:8554"]
-        Router["Router<br/>:8080"]
+    subgraph middle_layer [Middleware Layer]
+        rtsp[RTSP Server]
+        gst[Gstreamer<br>Plipeline]
+        yolo2["YOLO<br>(DeepStream)"]
+        qt[Qt]
     end
 
-    subgraph Models["Models (llama-cpp image)"]
-        Moon["moondream2<br/>:8001"]
-        Cosmos["reason2<br/>:8002"]
-        YOLO["YOLO<br/>:8003"]
+    subgraph software_layer[Software Layer]
+        webui["live-vlm-webui<br>(VLM Web UI)"]
+        kiosk["pyside6-gui<br>(Kiosk GUI)"]
     end
 
-    CSI["CSI Camera<br/>(IMX219)"]
+    subgraph model_layer [AI Model Layer]
+        router[Router]
+        moondream[MoonDream2]
+        cosmos[Reason2]
+        yolo["YOLO<br>(Container)"]
+        style yolo stroke-dasharray: 5 5
+    end
 
-    Browser --> WebUI --> Router
-    CSI --> RTSP --> WebUI
-    CSI --> Kiosk
-    CSI --> Desktop
-    Kiosk --> Router
-    Desktop --> Router
-    Router --> Moon
-    Router --> Cosmos
-    Router --> YOLO
+    subgraph hardware_layer [Hardware Layer]
+        csi[IMX219]
+        dp[Display Port]
+        input[Keyboard<br>Mouse]
+    end
+
+    cam --> browser
+    browser <--> webui
+
+    webui <--> router
+    kiosk <--> router
+
+    csi --> gst
+    gst --> dp
+    gst <--> yolo2
+    gst --> rtsp
+    rtsp --> webui
+    gst --> kiosk
+    kiosk <--> qt
+    qt --> dp
+    input --> qt
+
+    router <--> moondream
+    router <--> cosmos
+    router <--> yolo
 ```
 
 ### 3. GUI Tools
@@ -52,8 +73,7 @@ Two GUI frontends, both using the same Router API + Docker model backend:
 
 | GUI | Mode | Description | Docs |
 |-----|------|-------------|------|
-| pyside6-gui | Kiosk (fullscreen) | Fullscreen control panel, OSD overlay, sidebar control | [pyside6-gui.md](pyside6-gui.md) |
-| pyside6-main | Desktop (windowed) | Windowed control panel + AI popup, YOLO auto-detection | [pyside6-main.md](pyside6-main.md) |
+| pyside6-gui | Kiosk | Fullscreen control panel + OSD overlay + Sidebar control | [pyside6-gui.md](pyside6-gui.md) |
 
 ### 4. Web UI Tools
 
@@ -61,7 +81,7 @@ Browser-based frontend with WebRTC live streaming:
 
 | Tool | Description | Docs |
 |------|-------------|------|
-| live-vlm-webui | WebRTC browser UI, RTSP relay to CSI camera | [live-vlm-webui.md](live-vlm-webui.md) |
+| live-vlm-webui | Browser UI, RTSP relay to CSI camera | [live-vlm-webui.md](live-vlm-webui.md) |
 
 ### 5. RTSP Server
 
@@ -86,13 +106,13 @@ See [Container Description](#2-container-description)
 
 ### 2. SSH + Passwordless sudo
 
-**Open a terminal window. You will work on it**
+**⚠️ Open a terminal window. You will work on it**
 
 This will add trust information to the Jetson so you can login to it without a password.
 
 Generate an SSH key on your local machine and copy it to the Jetson:
 
-**Optional if you want to work on the Jetson deksktop or terminal**
+**⚠️ Optional if you want to work on the Jetson deksktop or terminal**
 
 ```bash
 # Generate key (local machine)
@@ -168,17 +188,16 @@ Reboot required after running.
 bash scripts/02-system-config.sh
 ```
 
-Configures CSI camera (IMX219 CAM0), enables MAXN Super Mode (25W) with
-jetson_clocks, and applies kernel memory tuning (swappiness, cache pressure,
+Configures CSI camera, enables MAXN Super Mode (25W), disables dynamic clock, and applies memory tuning (swappiness, cache pressure,
 CMA compaction).
 
-**You need to restart the Jetson to apply the new CSI configuration**
+**⚠️ You need to restart the Jetson to apply the new settings**
 
 > 📄 Script: `scripts/02-system-config.sh`
 
 ### 7. Install Basic Packages
 
-**The GUI has been disabled. You can continue by login from a remote machine or work with xterm on the screen**
+**⚠️ The GUI has been disabled. You can continue by login from a remote machine or work with `xterm` on the screen**
 
 ```bash
 bash scripts/03-install-deps.sh
@@ -194,8 +213,7 @@ Installs: python3-venv, v4l-utils, libxcb-cursor0, python3-pip, DeepStream SDK 7
 bash scripts/04-download-models.sh
 ```
 
-Downloads all models into `models/`: Reason2 (IQ4_XS, \~970MB LLM + 782MB mmproj),
-moondream2 (q4_k, ~877MB LLM + 868MB mmproj), and YOLOv8n (~6.5MB .pt).
+Downloads all models into `models/`: Reason2, MoonDream2, and YOLO.
 
 > 📄 Script: `scripts/04-download-models.sh`
 
@@ -207,23 +225,22 @@ moondream2 (q4_k, ~877MB LLM + 868MB mmproj), and YOLOv8n (~6.5MB .pt).
 bash scripts/05-build-all.sh
 ```
 
-Builds all containers from Dockerfiles: router, llama-cpp (reason2 + moondream2 share this image),\nyolo, live-vlm-webui, and rtsp-server. The base image `dustynv/l4t-pytorch:r36.4.0` is pulled once
-for llama-cpp and yolo.
+Builds all containers from Dockerfiles: router, llama-cpp, yolo, live-vlm-webui, and rtsp-server. The base image `dustynv/l4t-pytorch:r36.4.0` is pulled once for llama-cpp and yolo.
 
 > 📄 Script: `scripts/05-build-all.sh`
 
 ### 2. Container Description
 
-All containers on `vlm-net` bridged network.  Router and RTSP server also expose ports to host. Access via `localhost`, `127.0.0.1`, or Jetson LAN IP (e.g. `192.168.1.119`).
+All containers on `vlm-net` bridged network. Router and RTSP server also expose ports to host. Access via `localhost`, `127.0.0.1`, or Jetson IP address.
 
 | Image | Container | Port | Accessible via | Purpose | API / Protocol |
 |-------|-----------|------|---------------|---------|----------------|
-| `router` | `router` | 8080 | host + vlm-net | API gateway, dynamic model detection | `GET http://<host>:8080/v1/models`<br>`POST http://<host>:8080/v1/chat/completions` |
-| `llama-cpp` | `moondream2` | 8001 | vlm-net only | moondream2 GGUF inference (llama-server, shared image) | `POST http://<host>:8001/v1/chat/completions` — image + text → text |
-| `llama-cpp` | `reason2` | 8002 | vlm-net only | reason2 GGUF inference (llama-server, shared image) | `POST http://<host>:8002/v1/chat/completions` — image + text → text |
-| `yolo` | `yolo` | 8003 | vlm-net only | YOLOv8n object detection (TensorRT auto, PyTorch fallback) | `POST http://<host>:8003/v1/chat/completions` — image → JSON `[{name, confidence, bbox}]` |
-| `live-vlm-webui` | `live-vlm-webui` | 8090 | host (--network host) | Web frontend, WebRTC + RTSP relay | Browser `http://<host>:8090` → WebRTC (ICE/DTLS/SCTP/SRTP). See [live-vlm-webui.md](live-vlm-webui.md). |
-| `rtsp-server` | `rtsp-server` | 8554 | host (--network host) | CSI camera RTSP stream (IMX219, nvarguscamerasrc → H.264) | `rtsp://<host>:8554/stream` — H.264 over RTP/UDP |
+| `router` | `router` | 8080 | host + vlm-net | API gateway + Model dection | `GET http://<host>:8080/v1/models`<br>`POST http://<host>:8080/v1/chat/completions` |
+| `llama-cpp` | `moondream2` | 8001 | vlm-net only | MoonDream2 inference | `POST http://<host>:8001/v1/chat/completions` — image + text → text |
+| `llama-cpp` | `reason2` | 8002 | vlm-net only | Reason2 inference | `POST http://<host>:8002/v1/chat/completions` — image + text → text |
+| `yolo` | `yolo` | 8003 | vlm-net only | YOLOn object detection | `POST http://<host>:8003/v1/chat/completions` — image → JSON `[{name, confidence, bbox}]` |
+| `live-vlm-webui` | `live-vlm-webui` | 8090 | host (--network host) | Web frontend | Browser `http://<host>:8090` → WebRTC (ICE/DTLS/SCTP/SRTP). See [live-vlm-webui.md](live-vlm-webui.md). |
+| `rtsp-server` | `rtsp-server` | 8554 | host (--network host) | RTSP server | `rtsp://<host>:8554/stream` — H.264 over RTP/UDP |
 
 ## Start Services
 
@@ -234,8 +251,8 @@ bash scripts/06-start-models.sh
 ```
 
 Starts Router (always), then interactively pick models:
-- **reason2** and/or **moondream2** (VLM, share the same `llama-cpp` image, can run together)
-- **YOLO** (object detection, can run solo or paired)
+- **Reason2** or **Moondream2** (VLM, share the same `llama-cpp` image, can run together)
+- **YOLO** (Object detection, can run solo or paired)
 - Each model shows its default parameters — press Enter to keep defaults or type new values
 - Automatically handles power mode, nvargus-daemon restart, and memory tuning
 
@@ -251,13 +268,6 @@ bash scripts/08-test-quick.sh
 Queries Router for available models, then runs batch inferences across all running models\nusing 30 test images (`test/test_01.jpg` ~ `test/test_30.jpg`). Reports success/empty/error\ncounts per model.
 
 > 📄 Script: `scripts/08-test-quick.sh`
-
-### 3. Other Services
-
-| Service | Docs |
-|---------|------|
-| live-vlm-webui (browser WebRTC UI) | [live-vlm-webui.md](live-vlm-webui.md) |
-| rtsp-server (CSI RTSP stream) | [rtsp-server.md](rtsp-server.md) |
 
 ## Performance Data
 
@@ -282,7 +292,7 @@ Measured at 1920×1080@30 on Jetson Orin Nano, 30-image batch test:
 
 ## Troubleshooting
 
-### 1. Tuning Model Parameters (OOM or Performance)
+### 1. Tuning Model Parameters
 
 Use the interactive launcher to set per-model parameters at startup:
 
@@ -423,24 +433,8 @@ sudo systemctl start nvargus-daemon
 │           ├── reason2_overlay.py
 │           ├── moondream2_overlay.py
 │           └── system_monitor.py
-├── pyside6-main/
-│   ├── main.py
-│   └── src/
-│       ├── ui/
-│       │   ├── main_window.py
-│       │   ├── ai_config_panel.py
-│       │   ├── control_panel.py
-│       │   └── video_canvas.py
-│       └── modules/
-│           ├── router_client.py
-│           ├── yolo_overlay.py
-│           ├── reason2_overlay.py
-│           ├── moondream2_overlay.py
-│           ├── video_worker.py
-│           └── system_monitor.py
 ├── readme.md
 ├── pyside6-gui.md
-├── pyside6-main.md
 ├── rtsp-server.md
 └── live-vlm-webui.md
 ```
