@@ -60,13 +60,7 @@ flowchart TB
 
 ```mermaid
 %%{init: {
-  'theme': 'base',
-  'themeVariables': {
-    'lineColor': '#ff0000',
-    'mindmapEdgeColor': '#555555',
-    'mindmapNodeBackgroundColor': '#e1f5fe',
-    'mindmapNodeTextColor': '#0288d1'
-  }
+  'theme': 'base'
 }}%%
 mindmap
     app(("pyside6-gui"))
