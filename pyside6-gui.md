@@ -59,34 +59,52 @@ flowchart TB
 **Module-level:**
 
 ```mermaid
-flowchart TB
-    Main["kiosk_window.py<br/>(MainWindow)"]
-    Sidebar["control_sidebar.py<br/>(ControlSidebar)"]
-    Display["video_display.py<br/>(VideoDisplay)"]
-
-    DF["defaults.py<br/>(shared config)"]
-    VS["video_source.py<br/>(nvdsosd pipeline)"]
-    RC["router_client.py<br/>(QThread HTTP)"]
-    SM["system_monitor.py<br/>(/proc + /sys)"]
-
-    YO["yolo_overlay.py<br/>(bbox color)"]
-    R2O["reason2_overlay.py<br/>(Reasoning)"]
-    MD2O["moondream2_overlay.py<br/>(Reasoning)"]
-
-    OSD["nvdsosd probe<br/>(color override)"]
-
-    Main --> Sidebar
-    Main --> Display
-    Main --> DF
-    Main --> VS
-    Main --> RC
-    Main --> SM
-    Main -- "interval" --> R2O
-    Main -- "interval" --> MD2O
-    OSD --> YO
-    VS -- "frame_for_infer (JPEG)" --> Main
-    RC -- "result_ready / error" --> Main
-    SM -- "read_stats()" --> Main
+%%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'lineColor': '#ff0000',
+    'mindmapEdgeColor': '#555555',
+    'mindmapNodeBackgroundColor': '#e1f5fe',
+    'mindmapNodeTextColor': '#0288d1'
+  }
+}}%%
+mindmap
+    app(("pyside6-gui"))
+        main(("Main<br>Window"))
+            side(("Control<br>Side Bar"))
+                cam(("Camera"))
+                    id(("ID"))
+                    res(("Resolution"))
+                rc(("Reception AI"))
+                    rcc(("YOLO/Disable"))
+                rs(("Reasoning AI"))
+                    rsc(("Reason2/MoonDream2/<br>Disable"))
+                    rsi(("Interval"))
+                    rsp(("Prompt"))
+                    rsm(("Max Token"))
+            video(("Video<br>Display"))
+        config(("Config"))
+            default(("Default<br>Config"))
+            rec(("Argument<br>Resolv"))
+            md(("Model<br>Enum"))
+        vsrc(("Video<br>Source"))
+            nva(("NvArgusCameraSrc"))
+            nvi(("NvInfer"))
+            nvo(("NvDsOSD"))
+            nvg(("NvGLESEGLSink"))
+        router(("Async<br>HTTP"))
+        mon(("System<br>Monitor"))
+            proc(("/proc"))
+            mem(("/sys"))
+        ov(("Overlay"))
+            r2(("Reason2<br>Overlay"))
+                r2p(("Payload"))
+                r2d(("Caption"))
+            m2(("MoonDream2<br>Overlay"))
+                m2p(("Payload"))
+                m2d(("Caption"))
+            y(("YOLO<br>Overlay"))
+                yd(("BBox"))
 ```
 
 ### 2. Function Blocks
