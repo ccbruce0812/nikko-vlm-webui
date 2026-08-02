@@ -22,7 +22,7 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     echo "  Requires Xorg (xorg.service) and openbox.service."
     echo ""
     echo "  All options are forwarded to main.py.  Key options:"
-    echo "  --dpi-scale SCALE    Font scale factor (default: 2.0)"
+    echo "  --dpi-scale SCALE    Font scale factor (default: 1.0)"
     echo "  --play               Auto-start streaming (skip manual START)"
     echo "  --camera-id N        Camera device ID (default: 0)"
     echo "  --resolution WxH@FPS Resolution (default: 1920x1080)"
