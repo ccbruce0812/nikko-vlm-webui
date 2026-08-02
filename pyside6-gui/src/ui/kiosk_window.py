@@ -160,7 +160,9 @@ class KioskWindow(QMainWindow):
         if slot.name == "disable" or slot.pending: return
         b64 = base64.b64encode(jpeg_data).decode()
         slot.pending = True; slot.infer_start = time.time()
-        payload = slot.prepare(b64, self._params.get("prompt",""), self._params.get("max_tokens",512))
+        payload = slot.prepare(b64,
+                               self._sidebar.prompt_edit.toPlainText().strip(),
+                               int(self._sidebar.tokens_edit.text() or 512))
         logger.info("POST -> %s (%.0f KB)", slot.name, len(payload)/1024)
         self._router.send_raw_payload(payload)
 
