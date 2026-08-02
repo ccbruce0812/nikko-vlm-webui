@@ -41,7 +41,7 @@ def fill_display_meta(display_meta, result: dict,
     lines = lines[:5]
 
     cap_w = int(w * 0.95)
-    cap_line_h = int(14 * s * ds)
+    cap_line_h = int(32 * s * ds)
     cap_margin = int(h * 0.12)
     cap_x = int((w - cap_w) // 2)
     cap_text_h = cap_line_h * len(lines)
@@ -61,7 +61,7 @@ def fill_display_meta(display_meta, result: dict,
         cap = display_meta.text_params[label_idx]; label_idx += 1
         cap.display_text = line
         cap.x_offset = cap_x + int(4 * s)
-        cap.y_offset = cap_y + int(2 * s) + li * cap_line_h
+        cap.y_offset = cap_y + li * cap_line_h
         cap.font_params.font_name = "Monospace"
         cap.font_params.font_size = int(16 * s)
         cap.font_params.font_color.set(1.0, 1.0, 1.0, 1.0)

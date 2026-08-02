@@ -188,7 +188,7 @@ class KioskWindow(QMainWindow):
             display_meta = pyds.nvds_acquire_display_meta_from_pool(batch_meta)
             w = self._params.get("width", self._config.get("resolution_w",1920))
             h = self._params.get("height", self._config.get("resolution_h",1080))
-            s = w / 1920.0; ds = self._config.get("dpi_scale",2.0)
+            s = w / 1920.0; ds = self._config.get("dpi_scale",1.0)
             RIGHT_MARGIN = 0.04; label_idx = 0
             osd_w = int(w * 0.30)
             display_meta.num_labels = 1
