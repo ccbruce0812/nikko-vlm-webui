@@ -120,6 +120,15 @@ class KioskWindow(QMainWindow):
         self._video_source = VideoSource(camera_id, width, height, fps, pipeline=pipeline)
         self._video_source.frame_for_infer.connect(self._on_frame_for_infer)
         self._video_source.status_message.connect(self._on_video_status)
+
+        # Apply perception model: set nvinfer interval on startup
+        nv = pipeline.get_by_name("nv_infer")
+        if nv:
+            pm = self._sidebar.perception_combo.currentText()
+            nv.set_property("interval", 0 if pm == "yolo" else 999999)
+            logger.info("nvinfer interval=%d (perception=%s)",
+                        0 if pm == "yolo" else 999999, pm)
+
         self._video_source.start()
         self._sidebar.set_streaming_state(True)
         self._mon_timer.start(5000)
