@@ -14,6 +14,7 @@ QGroupBox::title {
     top: 2px;
 }
 QComboBox, QLineEdit, QTextEdit { background-color: #2a2a2a; color: #ddd; border: 1px solid #555; padding: 6px; }
+QComboBox:focus { background-color: #444; }
 QComboBox QAbstractItemView {
     background-color: #2a2a2a;
     color: #ddd;

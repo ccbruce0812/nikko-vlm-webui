@@ -9,7 +9,7 @@ import time
 import os
 
 from PySide6.QtWidgets import (
-    QMainWindow, QHBoxLayout, QWidget, QLabel, QSizePolicy,
+    QMainWindow, QHBoxLayout, QVBoxLayout, QWidget, QLabel, QSizePolicy, QGridLayout,
 )
 from PySide6.QtCore import QTimer, Slot, Qt
 
@@ -72,6 +72,19 @@ class KioskWindow(QMainWindow):
         self._sidebar = ControlSidebar(config)
         self._init_ui(); self._connect_signals(); self._router.start()
         self._start_ram_monitor(config["ram_threshold"])
+
+        # Caption font (match global app font formula)
+        from PySide6.QtGui import QFont, QFontMetrics
+        from PySide6.QtWidgets import QApplication
+        screen = QApplication.primaryScreen()
+        dpi = screen.logicalDotsPerInch() if screen else 96
+        pts = max(10, int(12 * dpi / 96 * config.get("dpi_scale", 1.0)))
+        f = QFont("Monospace", pts)
+        self._caption_label.setFont(f)
+        self._osd_label.setFont(f)
+        line_h = QFontMetrics(f).height()
+        self._caption_label.setFixedHeight(line_h * 5 + 12)  # 5 lines + padding
+        self._osd_label.setFixedHeight(line_h + 4)  # 1 line + padding
         if config["auto_start"]:
             QTimer.singleShot(500, self._cli_auto_start)
 
@@ -85,7 +98,34 @@ class KioskWindow(QMainWindow):
         self._video_widget.setStyleSheet("background-color: black;")
         self._video_widget.setAttribute(Qt.WA_NativeWindow, True)
         self._video_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        layout.addWidget(self._video_widget, 3)
+
+        # Caption overlay on top of video
+        self._caption_label = QLabel()
+        self._caption_label.setStyleSheet("""
+            background-color: black;
+            color: white;
+            padding: 6px 12px;
+        """)
+        self._caption_label.setWordWrap(True)
+        self._caption_label.setAlignment(Qt.AlignTop)
+
+        # OSD label (single line above video)
+        self._osd_label = QLabel()
+        self._osd_label.setStyleSheet("""
+            background-color: black;
+            color: white;
+            padding: 2px 12px;
+            qproperty-alignment: "AlignRight";
+        """)
+
+        # Nest video + caption vertically
+        vid_stack = QVBoxLayout()
+        vid_stack.setContentsMargins(0,0,0,0)
+        vid_stack.setSpacing(0)
+        vid_stack.addWidget(self._osd_label)
+        vid_stack.addWidget(self._video_widget, 3)
+        vid_stack.addWidget(self._caption_label)
+        layout.addLayout(vid_stack, 3)
 
     def _connect_signals(self):
         self._sidebar.start_clicked.connect(self._on_start)
@@ -135,6 +175,8 @@ class KioskWindow(QMainWindow):
         self._interval_timer.start(params["interval"])
         logger.info("Streaming %dx%d@%d reasoning=%s interval=%dms (YOLO via nvinfer)",
                      width, height, fps, self._reos.name, params["interval"])
+        self._caption_label.setText("")
+        self._osd_label.setText("")
 
     def _bus_sync_handler(self, bus, message):
         if GstVideo.is_video_overlay_prepare_window_handle_message(message):
@@ -185,7 +227,10 @@ class KioskWindow(QMainWindow):
                 logger.info("nvinfer interval=999999 (YOLO disabled)")
 
     @Slot(str)
-    def _on_reasoning_changed(self, model): self._reos.activate(model)
+    def _on_reasoning_changed(self, model):
+        self._reos.activate(model)
+        if model == "disable":
+            self._caption_label.setText("")
 
     def _osd_probe(self, pad, info, user_data):
         gst_buf = info.get_buffer()
@@ -196,33 +241,8 @@ class KioskWindow(QMainWindow):
         while l_frame is not None:
             try: frame_meta = pyds.NvDsFrameMeta.cast(l_frame.data)
             except StopIteration: break
-            display_meta = pyds.nvds_acquire_display_meta_from_pool(batch_meta)
-            w = self._params.get("width", self._config.get("resolution_w",1920))
-            h = self._params.get("height", self._config.get("resolution_h",1080))
-            s = w / 1920.0; ds = self._config.get("dpi_scale",1.0)
-            RIGHT_MARGIN = 0.04; label_idx = 0
-            osd_w = int(w * 0.30)
-            display_meta.num_labels = 1
-            t0 = display_meta.text_params[0]; label_idx = 1
-            t0.display_text = f"Sample:{self._osd_fps:.1f}fps | GPU:{self._osd_gpu:.0f}% CPU:{self._osd_cpu:.0f}% RAM:{self._osd_ram:.1f}G"
-            t0.x_offset = int(w*(1-RIGHT_MARGIN)-osd_w); t0.y_offset = int(h*0.04)
-            t0.font_params.font_name = "Monospace"
-            t0.font_params.font_size = int(16*s)
-            t0.font_params.font_color.set(1.0,1.0,1.0,1.0)
-            t0.set_bg_clr = 1; t0.text_bg_clr.set(0.0,0.0,0.0,0.5)
-            if not self._osd_logged or self._osd_logged != (w,h):
-                self._osd_logged = (w,h)
-                logger.info("OSD scale: %dx%d s=%.2f font=%d/%d top_right=(%d,%d)",
-                             w,h,s,int(16*s),int(16*s),int(w*(1-RIGHT_MARGIN)-osd_w),int(h*0.04))
-
             # --- Override bbox colors per class (nvinfer → NvDsObjectMeta) ---
             yolo_overlay.override_bbox_colors(frame_meta)
-
-            # --- Reasoning (caption) ---
-            if self._reos.fill and self._reos.result:
-                label_idx = self._reos.fill(display_meta, self._reos.result, w, h, s, ds, label_idx)
-            display_meta.num_labels = label_idx
-            pyds.nvds_add_display_meta_to_frame(frame_meta, display_meta)
             try: l_frame = l_frame.next
             except StopIteration: break
         return Gst.PadProbeReturn.OK
@@ -238,6 +258,9 @@ class KioskWindow(QMainWindow):
         logger.info("<- %s OK (%.0fms)", model, elapsed)
         logger.info("  %s", response_text.lstrip()[:200])
         self._interval_timer.start(self._params.get("interval", 1000))
+        # Update caption label
+        cap = f"Elapsed: {elapsed:.0f}ms\n{response_text.lstrip()}"
+        self._caption_label.setText(cap)
 
     @Slot(str)
     def _on_router_error(self, msg):
@@ -254,6 +277,8 @@ class KioskWindow(QMainWindow):
         self._osd_cpu = cpu_pct; self._osd_ram = snap.get("ram",0)
         logger.info("Sample:%.1ffps | GPU:%.0f%% CPU:%.0f%% RAM:%.1fG",
                      self._osd_fps, self._osd_gpu, self._osd_cpu, self._osd_ram)
+        self._osd_label.setText(
+            f"Sample:{self._osd_fps:.1f}fps | GPU:{self._osd_gpu:.0f}% CPU:{self._osd_cpu:.0f}% RAM:{self._osd_ram:.1f}G")
 
     def _start_ram_monitor(self, threshold: float):
         import subprocess
