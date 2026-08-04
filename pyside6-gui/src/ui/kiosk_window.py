@@ -3,7 +3,6 @@ Kiosk main window with nvdsosd GPU overlay.
 YOLO via nvinfer (hw pipeline), reasoning via slot-based dispatch.
 """
 import base64
-import json
 import logging
 import time
 import os
@@ -46,7 +45,6 @@ class _Slot:
             m = MODULES[model_name]
             self.name = model_name
             self.prepare = m.prepare_payload
-            self.fill = m.fill_display_meta
         self.pending = False; self.result = None
 
 
@@ -65,7 +63,6 @@ class KioskWindow(QMainWindow):
         self._input_count = 0; self._fps_t0 = time.time()
         self._prev_cpu_snap = None
         self._latest_jpeg = b""
-        self._osd_logged = None
         self._reos = _Slot()
         self._reos.activate(config.get("reasoning_default", "disable"))
         self._osd_fps = self._osd_gpu = self._osd_cpu = self._osd_ram = 0.0
@@ -148,7 +145,7 @@ class KioskWindow(QMainWindow):
         _, _, fps = VideoSource.parse_resolution(res)
         self._input_count = 0; self._fps_t0 = time.time()
         self._latest_jpeg = b""
-        self._reos.result = None; self._osd_logged = None
+        self._reos.result = None
         vs = VideoSource(camera_id, width, height, fps)
         pipeline_str = vs._build_pipeline()
         pipeline = Gst.parse_launch(pipeline_str)

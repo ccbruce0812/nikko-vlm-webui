@@ -13,11 +13,10 @@ logger = logging.getLogger(__name__)
 
 
 class RouterClient(QThread):
-    """Async client: model discovery + chat completions via Router API."""
+    """Async client: chat completions via Router API."""
 
     result_ready = Signal(str, str)    # (model_name, response_text)
     error_occurred = Signal(str)       # error message
-    status_message = Signal(str)
 
     def __init__(self, router_url="http://localhost:8080"):
         super().__init__()
@@ -26,7 +25,6 @@ class RouterClient(QThread):
         self._pending = []  # list of (model, payload_json_str)
 
     # ----- public API (called from main thread) -----
-
 
     def send_raw_payload(self, payload_str: str):
         """Send a pre-built JSON payload (prepared by overlay module)."""
@@ -52,13 +50,10 @@ class RouterClient(QThread):
                     continue
 
                 model, payload = self._pending.pop(0)
-
                 asyncio.ensure_future(self._do_inference(session, model, payload))
-
 
     async def _do_inference(self, session, model, payload):
         try:
-            self.status_message.emit(f"Inferring {model}...")
             async with session.post(
                 f"{self._url}/v1/chat/completions",
                 data=payload,
@@ -68,7 +63,6 @@ class RouterClient(QThread):
                 data = await resp.json()
                 content = data["choices"][0]["message"]["content"]
                 self.result_ready.emit(model, content)
-                self.status_message.emit(f"{model} done")
         except Exception as e:
             self.error_occurred.emit(f"Inference error ({model}): {e}")
 
