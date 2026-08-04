@@ -45,7 +45,7 @@ def _handle_signal(sig, frame):
 
 def _parse_args():
     p = argparse.ArgumentParser(description="Kiosk VLM GUI", formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--dpi-scale", type=float, default=1.0, help="DPI scale (default: 1.0)")
+    p.add_argument("--dpi-scale", type=float, default=DEFAULTS["dpi_scale"], help="DPI scale (default: 1.0)")
     p.add_argument("--play", action="store_true", help="Auto-start streaming")
     p.add_argument("--camera-id", type=int, default=DEFAULTS["camera_id"])
     p.add_argument("--resolution", default=DEFAULTS["resolution"])

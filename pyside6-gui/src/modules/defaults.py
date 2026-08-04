@@ -10,4 +10,5 @@ DEFAULTS = {
     "max_tokens": 512,
     "router_url": "http://localhost:8080",
     "ram_threshold": 5.5,
+    "dpi_scale": 1.0,
 }
